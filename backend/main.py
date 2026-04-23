@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+# FastAPI - web framework pentru API
+# Uvicorn - pentru localhost
+
 app = FastAPI(title="Earthquake Forecast API")
 
 
