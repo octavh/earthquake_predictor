@@ -1,11 +1,6 @@
 # Project-specific
 data/*
 !data/.gitkeep
-models/*.pth
-models/*.pkl
-models/*.onnx
-models/*.xml
-models/*.bin
 .DS_Store
 myprojects/
 
