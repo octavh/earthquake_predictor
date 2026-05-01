@@ -1,4 +1,3 @@
-"""Feature engineering for earthquake forecasting."""
 from datetime import timedelta
 from pathlib import Path
 
@@ -8,6 +7,7 @@ import pandas as pd
 EARTH_RADIUS_KM = 6371.0
 MC = 4.5
 RADIUS_KM = 100
+EXTENDED_RADIUS_KM = 500
 
 PLATE_BOUNDARY_POINTS = np.array([
     [-90, 0], [-60, -75], [-35, -72], [-15, -75], [0, -80], [10, -85],
@@ -29,7 +29,6 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 def b_value(magnitudes, mc=3.0, min_count=15):
-    """Aki maximum-likelihood b-value. Mc=3.0 chosen for ML feature coverage."""
     mags = np.asarray(magnitudes)
     mags = mags[mags >= mc]
     if len(mags) < min_count:
@@ -66,12 +65,58 @@ class CatalogIndex:
         d = haversine(center_lat, center_lon, self.lats[idx], self.lons[idx])
         return idx[d <= radius_km]
 
+    def _regional_context(self, center_lat, center_lon, prediction_date, radius_km):
+        pred_ns = np.datetime64(prediction_date, "ns")
+        cutoff_10y_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=3650), "ns")
+
+        time_mask_10y = (self.times_ns < pred_ns) & (self.times_ns >= cutoff_10y_ns)
+
+        n_m5_ring_10y = 0
+        n_m6_ring_10y = 0
+        dist_to_m5_10y = float(EXTENDED_RADIUS_KM)
+
+        if time_mask_10y.any():
+            recent_idx = np.where(time_mask_10y)[0]
+            recent_dist = haversine(center_lat, center_lon, self.lats[recent_idx], self.lons[recent_idx])
+            recent_mags = self.mags[recent_idx]
+
+            in_ring = (recent_dist > radius_km) & (recent_dist <= EXTENDED_RADIUS_KM)
+            ring_mags = recent_mags[in_ring]
+            ring_dists = recent_dist[in_ring]
+
+            n_m5_ring_10y = int((ring_mags >= 5.0).sum())
+            n_m6_ring_10y = int((ring_mags >= 6.0).sum())
+
+            local_m5_mask = (recent_dist <= radius_km) & (recent_mags >= 5.0)
+            if local_m5_mask.any():
+                dist_to_m5_10y = 0.0
+            elif (ring_mags >= 5.0).any():
+                dist_to_m5_10y = float(ring_dists[ring_mags >= 5.0].min())
+            else:
+                dist_to_m5_10y = float(EXTENDED_RADIUS_KM)
+
+        m6_mask = self.mags >= 6.0
+        if m6_mask.any():
+            m6_dist = haversine(center_lat, center_lon, self.lats[m6_mask], self.lons[m6_mask])
+            dist_to_m6_ever = float(m6_dist.min())
+        else:
+            dist_to_m6_ever = 9999.0
+
+        return {
+            "n_m5_ring_10y": n_m5_ring_10y,
+            "n_m6_ring_10y": n_m6_ring_10y,
+            "dist_to_nearest_m5_10y": dist_to_m5_10y,
+            "dist_to_nearest_m6_ever": dist_to_m6_ever,
+        }
+
     def compute_features(self, center_lat, center_lon, prediction_date, radius_km=RADIUS_KM):
         pred_dt = pd.Timestamp(prediction_date)
 
         history_idx = self.quakes_in_window(
             center_lat, center_lon, radius_km, "1990-01-01", prediction_date,
         )
+
+        ctx = self._regional_context(center_lat, center_lon, prediction_date, radius_km)
 
         if len(history_idx) == 0:
             return {
@@ -82,6 +127,7 @@ class CatalogIndex:
                 "b_value_10y": np.nan, "a_value_10y": np.nan,
                 "mean_depth_365d": np.nan,
                 "dist_to_plate": float(distance_to_plate_boundary(center_lat, center_lon)),
+                **ctx,
             }
 
         history_times = self.times_ns[history_idx]
@@ -105,7 +151,6 @@ class CatalogIndex:
                 return 9999.0
             return (pred_dt - pd.Timestamp(arr.max())).total_seconds() / 86400.0
 
-        # b-value at mc=3.0 for ML feature coverage; min_count=15 for stability
         mags_10y = history_mags[last_3650]
         bv = b_value(mags_10y, mc=3.0)
         if not np.isnan(bv):
@@ -128,6 +173,7 @@ class CatalogIndex:
             "a_value_10y": av,
             "mean_depth_365d": float(history_depths[last_365].mean()) if last_365.any() else np.nan,
             "dist_to_plate": float(distance_to_plate_boundary(center_lat, center_lon)),
+            **ctx,
         }
 
     def compute_labels(self, center_lat, center_lon, prediction_date,

@@ -12,7 +12,7 @@ from backend.features import CatalogIndex
 CATALOG = Path(__file__).parent.parent / "data" / "earthquakes.csv"
 OUTPUT = Path(__file__).parent.parent / "data" / "training_set.csv"
 
-N_TRAIN = 1_000_000
+N_TRAIN = 500_000
 SEED = 42
 
 def main():

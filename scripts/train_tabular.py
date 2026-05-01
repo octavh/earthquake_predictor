@@ -24,6 +24,8 @@ FEATURE_COLS = [
     "days_since_m4", "days_since_m5",
     "b_value_10y", "a_value_10y",
     "mean_depth_365d", "dist_to_plate",
+    "n_m5_ring_10y", "n_m6_ring_10y",
+    "dist_to_nearest_m5_10y", "dist_to_nearest_m6_ever",
 ]
 
 THRESHOLDS = [3, 4, 5, 6, 7]
