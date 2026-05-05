@@ -65,35 +65,72 @@ class CatalogIndex:
         d = haversine(center_lat, center_lon, self.lats[idx], self.lons[idx])
         return idx[d <= radius_km]
 
+    def _find_seismic_center(self, center_lat, center_lon, prediction_date, days_back=7300):
+        """Find distance to main seismic center (cluster of earthquakes in last 20 years)."""
+        pred_ns = np.datetime64(prediction_date, "ns")
+        cutoff_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=days_back), "ns")
+        time_mask = (self.times_ns < pred_ns) & (self.times_ns >= cutoff_ns)
+
+        if not time_mask.any():
+            return 9999.0
+
+        idx = np.where(time_mask)[0]
+
+        # Calculate centroid (weighted by magnitude)
+        mags = self.mags[idx]
+        lats = self.lats[idx]
+        lons = self.lons[idx]
+
+        # Weight by magnitude to emphasize bigger earthquakes
+        weights = 10.0 ** (mags - 3.0)
+        center_lat_cluster = np.average(lats, weights=weights)
+        center_lon_cluster = np.average(lons, weights=weights)
+
+        # Distance from location to seismic center
+        dist = haversine(center_lat, center_lon, center_lat_cluster, center_lon_cluster)
+        return float(dist)
+
     def _regional_context(self, center_lat, center_lon, prediction_date, radius_km):
         pred_ns = np.datetime64(prediction_date, "ns")
-        cutoff_10y_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=3650), "ns")
+        cutoff_20y_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=7300), "ns")
 
-        time_mask_10y = (self.times_ns < pred_ns) & (self.times_ns >= cutoff_10y_ns)
+        time_mask_20y = (self.times_ns < pred_ns) & (self.times_ns >= cutoff_20y_ns)
 
-        n_m5_ring_10y = 0
-        n_m6_ring_10y = 0
-        dist_to_m5_10y = float(EXTENDED_RADIUS_KM)
+        n_m3_20y = 0
+        n_m5_20y = 0
+        n_m7_20y = 0
+        n_m5_ring_20y = 0
+        n_m6_ring_20y = 0
+        dist_to_m5_20y = float(EXTENDED_RADIUS_KM)
+        seismic_center_dist = self._find_seismic_center(center_lat, center_lon, prediction_date, 7300)
 
-        if time_mask_10y.any():
-            recent_idx = np.where(time_mask_10y)[0]
+        if time_mask_20y.any():
+            recent_idx = np.where(time_mask_20y)[0]
             recent_dist = haversine(center_lat, center_lon, self.lats[recent_idx], self.lons[recent_idx])
             recent_mags = self.mags[recent_idx]
 
+            # Local counts
+            local_mask = recent_dist <= radius_km
+            local_mags = recent_mags[local_mask]
+            n_m3_20y = int((local_mags >= 3.0).sum())
+            n_m5_20y = int((local_mags >= 5.0).sum())
+            n_m7_20y = int((local_mags >= 7.0).sum())
+
+            # Regional ring
             in_ring = (recent_dist > radius_km) & (recent_dist <= EXTENDED_RADIUS_KM)
             ring_mags = recent_mags[in_ring]
             ring_dists = recent_dist[in_ring]
 
-            n_m5_ring_10y = int((ring_mags >= 5.0).sum())
-            n_m6_ring_10y = int((ring_mags >= 6.0).sum())
+            n_m5_ring_20y = int((ring_mags >= 5.0).sum())
+            n_m6_ring_20y = int((ring_mags >= 6.0).sum())
 
             local_m5_mask = (recent_dist <= radius_km) & (recent_mags >= 5.0)
             if local_m5_mask.any():
-                dist_to_m5_10y = 0.0
+                dist_to_m5_20y = 0.0
             elif (ring_mags >= 5.0).any():
-                dist_to_m5_10y = float(ring_dists[ring_mags >= 5.0].min())
+                dist_to_m5_20y = float(ring_dists[ring_mags >= 5.0].min())
             else:
-                dist_to_m5_10y = float(EXTENDED_RADIUS_KM)
+                dist_to_m5_20y = float(EXTENDED_RADIUS_KM)
 
         m6_mask = self.mags >= 6.0
         if m6_mask.any():
@@ -103,11 +140,34 @@ class CatalogIndex:
             dist_to_m6_ever = 9999.0
 
         return {
-            "n_m5_ring_10y": n_m5_ring_10y,
-            "n_m6_ring_10y": n_m6_ring_10y,
-            "dist_to_nearest_m5_10y": dist_to_m5_10y,
+            "n_m3_20y": n_m3_20y,
+            "n_m5_20y": n_m5_20y,
+            "n_m7_20y": n_m7_20y,
+            "n_m5_ring_20y": n_m5_ring_20y,
+            "n_m6_ring_20y": n_m6_ring_20y,
+            "dist_to_nearest_m5_20y": dist_to_m5_20y,
             "dist_to_nearest_m6_ever": dist_to_m6_ever,
+            "seismic_center_dist_20y": seismic_center_dist,
         }
+
+    def _compute_adaptive_depth(self, center_lat, center_lon, prediction_date, initial_radius_km=100):
+        """Compute mean depth, widening radius if needed to get values."""
+        pred_ns = np.datetime64(prediction_date, "ns")
+        cutoff_3y_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=1095), "ns")
+        time_mask = (self.times_ns < pred_ns) & (self.times_ns >= cutoff_3y_ns)
+
+        if not time_mask.any():
+            return np.nan
+
+        search_radii = [initial_radius_km, 200, 300, 500, 1000]
+        for r in search_radii:
+            idx = self.quakes_in_window(center_lat, center_lon, r,
+                                       (pd.Timestamp(prediction_date) - timedelta(days=1095)).isoformat(),
+                                       prediction_date)
+            if len(idx) >= 5:
+                return float(self.depths[idx].mean())
+
+        return np.nan
 
     def compute_features(self, center_lat, center_lon, prediction_date, radius_km=RADIUS_KM):
         pred_dt = pd.Timestamp(prediction_date)
@@ -159,6 +219,9 @@ class CatalogIndex:
         else:
             av = np.nan
 
+        # Use adaptive depth calculation (widens search if needed)
+        mean_depth = self._compute_adaptive_depth(center_lat, center_lon, prediction_date, radius_km)
+
         return {
             "lat": center_lat, "lon": center_lon,
             "n_30d": int(last_30.sum()),
@@ -172,6 +235,7 @@ class CatalogIndex:
             "b_value_10y": float(bv) if not np.isnan(bv) else np.nan,
             "a_value_10y": av,
             "mean_depth_365d": float(history_depths[last_365].mean()) if last_365.any() else np.nan,
+            "mean_depth_adaptive": mean_depth,
             "dist_to_plate": float(distance_to_plate_boundary(center_lat, center_lon)),
             **ctx,
         }

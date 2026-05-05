@@ -109,6 +109,18 @@ def forecast(
     # Plate boundary proximity: closer to plate = higher risk
     plate_proximity = max(0.2, 1.0 - dist_to_plate / 2000.0)
 
+    # Regional M5+ activity (attenuation model): nearby M5+ earthquakes felt at location
+    # Vrancea M6 at 250km propagates to Chișinău as felt intensity ~M4-5
+    n_m5_ring = feats.get("n_m5_ring_20y", 0)
+    dist_to_m5 = feats.get("dist_to_nearest_m5_20y", 500)
+    regional_boost = 0
+    if n_m5_ring > 0:
+        # More nearby M5+ = higher hazard
+        regional_boost += 0.2 * min(1.0, n_m5_ring / 5.0)
+        # Closer M5+ = more felt at location (attenuation)
+        if dist_to_m5 < 400:
+            regional_boost += 0.25 * (1.0 - dist_to_m5 / 400.0)
+
     # b-value: low b-value suggests larger events are more likely
     b_value_factor = 1.0
     if not np.isnan(b_value) and b_value > 0:
@@ -124,9 +136,9 @@ def forecast(
         # For simplicity: halve probability for each magnitude step
         mag_factor = 0.5 ** (m - 3)
 
-        # Combine factors
+        # Combine factors (includes regional attenuation from nearby M5+ zones)
         p = base_p * mag_factor * plate_proximity * b_value_factor
-        p *= (1.0 + recency_boost)
+        p *= (1.0 + recency_boost + regional_boost)
         p = max(0.001, min(0.99, p))
 
         raw_probs_30d[m] = p
