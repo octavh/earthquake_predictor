@@ -98,6 +98,7 @@ class CatalogIndex:
 
         n_m3_20y = 0
         n_m5_20y = 0
+        n_m6_20y = 0
         n_m7_20y = 0
         n_m5_ring_20y = 0
         n_m6_ring_20y = 0
@@ -114,6 +115,7 @@ class CatalogIndex:
             local_mags = recent_mags[local_mask]
             n_m3_20y = int((local_mags >= 3.0).sum())
             n_m5_20y = int((local_mags >= 5.0).sum())
+            n_m6_20y = int((local_mags >= 6.0).sum())
             n_m7_20y = int((local_mags >= 7.0).sum())
 
             # Regional ring
@@ -142,6 +144,7 @@ class CatalogIndex:
         return {
             "n_m3_20y": n_m3_20y,
             "n_m5_20y": n_m5_20y,
+            "n_m6_20y": n_m6_20y,
             "n_m7_20y": n_m7_20y,
             "n_m5_ring_20y": n_m5_ring_20y,
             "n_m6_ring_20y": n_m6_ring_20y,
@@ -300,7 +303,65 @@ class _SmallCNN(nn.Module):
 
 
 class LandUseClassifier:
+    # EuroSAT classes (fixed, known at compile time)
+    EUROSAT_CLASSES = [
+        "AnnualCrop", "Forest", "HerbaceousVegetation", "Highway",
+        "Industrial", "Pasture", "PermanentCrop", "Residential",
+        "River", "SeaLake"
+    ]
+
     def __init__(self, model_path: Path):
+        model_path = Path(model_path)
+        self.input_size = 64
+        bundle = None
+
+        # Try OpenVINO IR first (.xml + .bin) - doesn't need .pth
+        ir_path = model_path.with_suffix(".xml")
+        if ir_path.exists():
+            try:
+                import openvino as ov
+                core = ov.Core()
+                self.compiled_model = core.compile_model(str(ir_path), "CPU")
+                input_layer = next(iter(self.compiled_model.inputs))
+                output_layer = next(iter(self.compiled_model.outputs))
+                self.input_layer = input_layer
+                self.output_layer = output_layer
+                self.classes = self.EUROSAT_CLASSES
+                self.runtime = "openvino"
+                print(f"LandUseClassifier loaded (OpenVINO): {len(self.classes)} classes")
+            except Exception as e:
+                print(f"OpenVINO load failed ({e}), falling back to PyTorch")
+                bundle = self._load_bundle(model_path)
+                if bundle:
+                    self._init_pytorch(bundle)
+        else:
+            bundle = self._load_bundle(model_path)
+            if bundle:
+                self._init_pytorch(bundle)
+
+        self.transform = transforms.Compose([
+            transforms.Resize((self.input_size, self.input_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+
+    def _load_bundle(self, model_path):
+        """Load PyTorch bundle if it exists."""
+        if model_path.exists():
+            try:
+                bundle = torch.load(model_path, map_location="cpu", weights_only=False)
+                self.classes = bundle.get("classes", self.EUROSAT_CLASSES)
+                self.input_size = bundle.get("input_size", 64)
+                return bundle
+            except Exception as e:
+                print(f"Warning: could not load bundle from {model_path.name}: {e}")
+        return None
+
+    def _init_pytorch(self, bundle):
+        """Initialize PyTorch fallback path."""
+        if bundle is None:
+            raise RuntimeError("PyTorch fallback needs a valid .pth bundle file")
+
         if torch.backends.mps.is_available():
             self.device = torch.device("mps")
         elif torch.cuda.is_available():
@@ -308,28 +369,34 @@ class LandUseClassifier:
         else:
             self.device = torch.device("cpu")
 
-        bundle = torch.load(model_path, map_location=self.device, weights_only=False)
-        self.classes = bundle["classes"]
-        self.input_size = bundle.get("input_size", 64)
-
         self.model = _SmallCNN(num_classes=len(self.classes)).to(self.device)
         self.model.load_state_dict(bundle["state_dict"])
         self.model.eval()
+        self.runtime = "pytorch"
+        print(f"LandUseClassifier loaded (PyTorch): {len(self.classes)} classes")
 
-        self.transform = transforms.Compose([
-            transforms.Resize((self.input_size, self.input_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
-        print(f"LandUseClassifier loaded: {len(self.classes)} classes")
-
-    @torch.no_grad()
     def classify_image(self, pil_image: Image.Image) -> dict:
         if pil_image.mode != "RGB":
             pil_image = pil_image.convert("RGB")
-        tensor = self.transform(pil_image).unsqueeze(0).to(self.device)
-        logits = self.model(tensor)
-        probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+        # Preprocess to numpy
+        tensor = self.transform(pil_image)
+        input_array = tensor.numpy()
+
+        if self.runtime == "openvino":
+            # OpenVINO expects NCHW format
+            input_array = np.expand_dims(input_array, 0)
+            result = self.compiled_model([input_array])
+            logits = result[self.output_layer][0]
+            # Softmax in numpy
+            exp_logits = np.exp(logits - logits.max())
+            probs = exp_logits / exp_logits.sum()
+        else:
+            # PyTorch path
+            with torch.no_grad():
+                tensor_batch = tensor.unsqueeze(0).to(self.device)
+                logits = self.model(tensor_batch)
+                probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
 
         top_idx = int(probs.argmax())
         top_class = self.classes[top_idx]

@@ -159,19 +159,8 @@ function renderResults(data, vuln) {
     // Context section
     const m3_count = feats.n_m3_20y || 0;
     const m5_count = feats.n_m5_20y || 0;
+    const m6_count = feats.n_m6_20y || 0;
     const m7_count = feats.n_m7_20y || 0;
-    const seismicCenterDist = feats.seismic_center_dist_20y || 9999;
-    const meanDepth = feats.mean_depth_adaptive || feats.mean_depth_365d || 0;
-
-    const formatDistance = (d) => {
-        if (d >= 9999) return '—';
-        return d.toFixed(0);
-    };
-
-    const formatDepth = (d) => {
-        if (isNaN(d) || d === 0) return '—';
-        return d.toFixed(1);
-    };
 
     html += `<div class="result-section">
         <h2>Context Seismic</h2>
@@ -185,16 +174,12 @@ function renderResults(data, vuln) {
                 <div class="context-value">${m5_count}</div>
             </div>
             <div class="context-item">
+                <div class="context-label">M≥6 (20 ani)</div>
+                <div class="context-value">${m6_count}</div>
+            </div>
+            <div class="context-item">
                 <div class="context-label">M≥7 (20 ani)</div>
                 <div class="context-value">${m7_count}</div>
-            </div>
-            <div class="context-item">
-                <div class="context-label">Centrul seismic</div>
-                <div class="context-value">${formatDistance(seismicCenterDist)} km</div>
-            </div>
-            <div class="context-item">
-                <div class="context-label">Adâncime medie</div>
-                <div class="context-value">${formatDepth(meanDepth)} km</div>
             </div>
         </div>
     </div>`;
