@@ -9,8 +9,8 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.features import CatalogIndex
 
-CATALOG = Path(__file__).parent.parent / "data" / "earthquakes.csv"
-OUTPUT = Path(__file__).parent.parent / "data" / "training_set.csv"
+CATALOG = Path(__file__).parent.parent / "data" / "model1" / "earthquakes.csv"
+OUTPUT = Path(__file__).parent.parent / "data" / "model1" / "training_set.csv"
 
 N_TRAIN = 500_000
 SEED = 42

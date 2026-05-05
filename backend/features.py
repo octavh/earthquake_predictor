@@ -191,3 +191,95 @@ class CatalogIndex:
 
         future_mags = self.mags[future_idx]
         return {f"label_m{m}": int((future_mags >= m).any()) for m in [3, 4, 5, 6, 7]}
+    
+    # ============================================================
+# Land-use vulnerability classifier (CNN)
+# ============================================================
+import torch
+import torch.nn as nn
+from torchvision import transforms
+from PIL import Image
+
+# Vulnerability proxy mapping: land-use class -> exposure score (0-100)
+# Higher = more population/structures exposed in case of an earthquake
+VULNERABILITY_SCORES = {
+    "Residential": 95,
+    "Industrial": 85,
+    "Highway": 60,
+    "AnnualCrop": 25,
+    "PermanentCrop": 25,
+    "Pasture": 15,
+    "HerbaceousVegetation": 10,
+    "Forest": 10,
+    "River": 5,
+    "SeaLake": 0,
+}
+
+
+class _SmallCNN(nn.Module):
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.AdaptiveAvgPool2d((4, 4)),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 4 * 4, 256), nn.ReLU(), nn.Dropout(0.3),
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
+
+class LandUseClassifier:
+    def __init__(self, model_path: Path):
+        if torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        elif torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        bundle = torch.load(model_path, map_location=self.device, weights_only=False)
+        self.classes = bundle["classes"]
+        self.input_size = bundle.get("input_size", 64)
+
+        self.model = _SmallCNN(num_classes=len(self.classes)).to(self.device)
+        self.model.load_state_dict(bundle["state_dict"])
+        self.model.eval()
+
+        self.transform = transforms.Compose([
+            transforms.Resize((self.input_size, self.input_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+        print(f"LandUseClassifier loaded: {len(self.classes)} classes")
+
+    @torch.no_grad()
+    def classify_image(self, pil_image: Image.Image) -> dict:
+        if pil_image.mode != "RGB":
+            pil_image = pil_image.convert("RGB")
+        tensor = self.transform(pil_image).unsqueeze(0).to(self.device)
+        logits = self.model(tensor)
+        probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+        top_idx = int(probs.argmax())
+        top_class = self.classes[top_idx]
+        top_prob = float(probs[top_idx])
+
+        # Weighted vulnerability: each class probability * its exposure score
+        weighted = sum(
+            float(probs[i]) * VULNERABILITY_SCORES.get(c, 0)
+            for i, c in enumerate(self.classes)
+        )
+
+        return {
+            "predicted_class": top_class,
+            "confidence": round(top_prob, 3),
+            "vulnerability_score": round(weighted, 1),
+            "all_classes": {c: round(float(probs[i]), 3) for i, c in enumerate(self.classes)},
+        }

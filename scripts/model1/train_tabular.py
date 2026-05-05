@@ -13,7 +13,7 @@ from sklearn.metrics import (
 )
 
 ROOT = Path(__file__).parent.parent
-TRAINING_SET = ROOT / "data" / "training_set.csv"
+TRAINING_SET = ROOT / "data" / "model1" / "training_set.csv"
 MODELS_DIR = ROOT / "models"
 MODELS_DIR.mkdir(exist_ok=True)
 
