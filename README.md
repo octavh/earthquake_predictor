@@ -2,11 +2,6 @@
 
 Instrument de prognoză probabilistă a hazardului seismic care combină un model ML pe date tabulare antrenat pe cataloage globale de cutremure cu un CNN pe imagini satelitare pentru analiza expunerii. Realizat pentru categoria Inteligență Artificială, mai 2026.
 
-## Echipa
-- [Numele tău 1]
-- [Numele tău 2]
-- [Liceul / Clasa]
-
 ## Ce face acest proiect
 
 Apasă pe orice locație de pe harta lumii și vezi:
