@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platformă de Prognoză Seismică</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="container">
+        <div id="map"></div>
+        <div id="sidebar">
+            <div class="sidebar-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div>
+                        <h1>Prognoză Seismică</h1>
+                        <p class="subtitle">Faceți click pe hartă pentru a calcula hazardul seismic local</p>
+                    </div>
+                    <button id="infoBtn" style="background: #0ea5e9; color: white; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">?</button>
+                </div>
+
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Fereastra de prognoză (zile)</label>
+                        <input type="number" id="days" value="30" min="1" max="365" />
+                    </div>
+                    <div class="control-group">
+                        <label>Rază de căutare (km)</label>
+                        <input type="number" id="radius" value="100" min="10" max="500" />
+                    </div>
+                </div>
+
+                <div id="results">
+                    <div class="result-section">
+                        <p class="placeholder">Selectați o locație pe hartă</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="infoModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto;">
+        <div style="background: #0f172a; color: #fff; max-width: 700px; margin: 40px auto; padding: 40px; border-radius: 12px; border: 1px solid #0ea5e9;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h2 style="font-size: 28px; color: #0ea5e9; margin: 0;">Cum funcționează?</h2>
+                <button id="closeBtn" style="background: none; border: none; color: #0ea5e9; font-size: 24px; cursor: pointer;">✕</button>
+            </div>
+
+            <div style="color: #cbd5e1; line-height: 1.8; font-size: 14px;">
+                <h3 style="color: #0ea5e9; margin-top: 24px; margin-bottom: 8px;">1. Selectați o locație</h3>
+                <p>Faceți clic pe hartă pentru a alege o locație. Raza de căutare (în km) definește zona analizată pentru activitate seismică locală.</p>
+
+                <h3 style="color: #0ea5e9; margin-top: 24px; margin-bottom: 8px;">2. Hazard Seismic</h3>
+                <p>Probabilitățile M≥3 până la M≥7 se calculează din:</p>
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                    <li><strong>Rata de activitate:</strong> Câte cutremure au fost în ultimii 10 ani</li>
+                    <li><strong>Activitate recentă:</strong> Dacă au fost cutremure în ultimele luni/ani</li>
+                    <li><strong>Cutremure apropiate mari:</strong> Vrancea și alte zone active 100-500 km departe</li>
+                    <li><strong>Magnitudine:</strong> Cutremurele mari sunt mult mai rare (10× mai rare pentru fiecare grad)</li>
+                    <li><strong>Tectonică:</strong> Apropierea de marginea plăcilor tectonice</li>
+                </ul>
+
+                <h3 style="color: #0ea5e9; margin-top: 24px; margin-bottom: 8px;">3. Expunere (folosirea terenului)</h3>
+                <p>O rețea neurală (CNN) analizează imaginea satelitară a locației și clasifică terenul în 10 categorii:</p>
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                    <li><strong>Expunere înaltă:</strong> Rezidențial (95), Industrial (85), Șosea (60)</li>
+                    <li><strong>Expunere medie:</strong> Culturi (25), Pășune (15)</li>
+                    <li><strong>Expunere scăzută:</strong> Pădure (10), Apă (0)</li>
+                </ul>
+
+                <h3 style="color: #0ea5e9; margin-top: 24px; margin-bottom: 8px;">4. Indicile de risc</h3>
+                <p>Riscul combină doi factori:</p>
+                <div style="margin-left: 20px; margin-top: 8px; font-size: 13px;">
+                    <div style="margin-bottom: 8px;"><strong style="color: #0ea5e9;">Probabilitate de cutremur</strong> × <strong style="color: #0ea5e9;">Expunerea zonei</strong> = <strong style="color: #0ea5e9;">Indicile de risc</strong></div>
+                    <p style="color: #94a3b8; margin: 4px 0;">Un loc cu șanse mici de cutremur dar în arie populate = risc moderat. Un loc cu șanse mari ȘI arie populate = risc ridicat.</p>
+                </div>
+
+                <h3 style="color: #0ea5e9; margin-top: 24px; margin-bottom: 8px;">5. Context Seismic</h3>
+                <p>Informații detaliate despre activitatea istorică din zona selectată:</p>
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                    <li>Numărul de cutremure în ultimul deceniu</li>
+                    <li>Magnitudinea maximă și adâncimea medie</li>
+                    <li>Timp de la ultimul cutremur important (M≥5)</li>
+                    <li>Cutremure mari în apropierea zonei (100-500 km)</li>
+                </ul>
+
+                <div style="background: rgba(14, 165, 233, 0.1); padding: 16px; border-radius: 8px; margin-top: 24px; border-left: 4px solid #0ea5e9;">
+                    <p style="margin: 0; font-size: 12px;">
+                        <strong>Notă:</strong> Aceasta este o prognoză statistică bazată pe date istorice. Cutremurele nu pot fi prezise cu exactitate. Datele sunt actualizate până la aprilie 2026.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
