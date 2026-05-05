@@ -93,6 +93,28 @@ earthquake_predictor/
 
 ## Cum se rulează pe calculatorul tău
 
+## Librarii necesare
+
+- fastapi
+- uvicorn[standard]
+- python-multipart
+- lightgbm
+- torch
+- torchvision
+- scikit-learn
+- pandas
+- numpy
+- joblib
+- Pillow
+- requests
+- tqdm
+- matplotlib
+- openvino
+- onnx
+- onnxmltools
+- onnxconverter-common
+- onnxscript
+
 ### Cerințe prealabile
 
 - Python 3.11 (alte versiuni 3.x ar putea funcționa dar nu au fost testate)
