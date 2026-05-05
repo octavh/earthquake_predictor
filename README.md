@@ -93,7 +93,7 @@ earthquake_predictor/
 
 ## Cum se rulează pe calculatorul tău
 
-## Librarii necesare
+### Librarii necesare
 
 - fastapi
 - uvicorn[standard]
