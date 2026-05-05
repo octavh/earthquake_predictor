@@ -42,14 +42,17 @@ print("Loading catalog index...")
 Resources.catalog = CatalogIndex(CATALOG_PATH)
 print("✓ Catalog loaded")
 
-CNN_PATH = MODELS_DIR / "cnn_eurosat.pth"
+CNN_PATH = MODELS_DIR / "cnn_eurosat.xml"
 land_use_classifier = None
 
 def get_land_use_classifier():
     global land_use_classifier
-    if land_use_classifier is None and CNN_PATH.exists():
-        print("Loading land-use classifier...")
-        land_use_classifier = LandUseClassifier(CNN_PATH)
+    if land_use_classifier is None:
+        try:
+            print("Loading land-use classifier...")
+            land_use_classifier = LandUseClassifier(MODELS_DIR / "cnn_eurosat.pth")
+        except Exception as e:
+            print(f"Failed to load CNN: {e}")
     return land_use_classifier
 
 
