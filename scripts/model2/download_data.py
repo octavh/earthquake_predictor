@@ -4,7 +4,7 @@ from pathlib import Path
 
 import requests
 
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = ROOT / "data" / "model2"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ZIP_PATH = DATA_DIR / "EuroSAT.zip"

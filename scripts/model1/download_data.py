@@ -28,7 +28,7 @@ import time
 import io
 import sys
 
-OUTPUT_DIR = Path(__file__).parent.parent / "data" / "model1"
+OUTPUT_DIR = Path(__file__).parent.parent.parent / "data" / "model1"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 USGS_RAW = OUTPUT_DIR / "earthquakes-raw.csv"
