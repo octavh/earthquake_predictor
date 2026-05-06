@@ -21,7 +21,7 @@ Apasă pe orice locație de pe harta lumii și vezi:
 ## Tehnologii folosite
 
 - **Backend:** Python, FastAPI
-- **Modele:** LightGBM (predicții), PyTorch + OpenVINO (imagini satelitare)
+- **Modele:** LightGBM (predicții), PyTorch (imagini satelitare) + OpenVINO
 - **Frontend:** HTML/CSS/JavaScript, hartă Leaflet
 - **Date:** pandas, numpy
 
@@ -34,6 +34,7 @@ earthquake_predictor/
 ├── scripts/               # Scripturi pentru descărcarea și antrenarea modelelor
 ├── models/                # Modelele pregătite
 ├── data/                  # Date descărcate (mare)
+├── librarii.txt/          # Librariile utilizate in proiect
 └── README.md
 ```
 
