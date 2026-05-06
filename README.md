@@ -56,7 +56,7 @@ source .venv/bin/activate
 # 4. Instalează librarii
 pip install -r librarii.txt
 
-# 5. Descarca datele (aprox. 10 min, exista feature-uri care utilizeaza aceste date)
+# 5. Descarca datele (aprox. 20 min, exista feature-uri care utilizeaza aceste date)
 # Fisierele cu date nu au fost adaugate pe Github, deoarece intrec limita de spatiu pentru fisiere.
 python3 scripts/model1/download_data.py
 
