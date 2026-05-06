@@ -1,6 +1,6 @@
 # Platformă de Prognoză a Cutremurelor
 
-Instrument de prognoză probabilistă a hazardului seismic care combină un model ML pe date tabulare antrenat pe cataloage globale de cutremure cu un CNN pe imagini satelitare pentru analiza expunerii. Realizat pentru categoria Inteligență Artificială, mai 2026.
+Instrument de prognoză probabilistă a hazardului seismic care combină un model ML pe date tabulare antrenat pe cataloage globale de cutremure cu un CNN pe imagini satelitare pentru analiza expunerii.
 
 ## Ce face acest proiect
 
@@ -219,23 +219,3 @@ Risc = P(M≥5) × Expunere
 ```
 
 Unde Expunerea este o sumă ponderată a probabilităților claselor CNN înmulțite cu scoruri hardcoded de vulnerabilitate per clasă (Rezidențial = 95, Industrial = 85, Pădure = 10, Mare/Lac = 0, etc.). Acesta este un proxy aproximativ — evaluarea completă a vulnerabilității necesită date la nivel de clădire la care nu am avut acces.
-
-## Limitări recunoscute
-
-- Acesta este un instrument de **prognoză**, nu de predicție. Toate rezultatele sunt probabilități, nu predicții ale unor evenimente specifice.
-- Catalogul USGS nu are acoperire uniformă: M ≥ 0 în SUA, M ≥ ~4.5 la nivel global. Acuratețea prognozei este cea mai bună în regiuni cu instrumentație seismică densă.
-- Evenimentele M≥7 se produc prea rar la nivel global (~540 din 1990) pentru a permite o prognoză ML fiabilă la scara setului nostru de antrenare; ROC-AUC este 0.575 pentru acest prag (mai bună decât aleatoriu, dar slabă).
-- Utilizarea terenului este un proxy aproximativ pentru vulnerabilitate; evaluarea de calitate inginerească necesită date la nivel de clădire.
-- Atenuarea undelor seismice (intensitatea resimțită la distanță) nu este modelată. Prognoza acoperă probabilitatea epicentrului unui cutremur într-o rază de căutare, nu intensitatea percepută la distanță. Utilizatorii care doresc o evaluare regională a expunerii pot folosi raza de căutare configurabilă (10–500 km).
-
-## Licență
-
-MIT — fă fork, extinde, deploy după bunul plac.
-
-## Citare
-
-Dacă folosești acest cod în munca ta, te rog citează dataseturile de bază:
-
-- USGS Earthquake Hazards Program (https://earthquake.usgs.gov/)
-- Institutul Național pentru Fizica Pământului — INFP (https://www.infp.ro/)
-- Helber, P. et al. (2019). EuroSAT: A Novel Dataset and Deep Learning Benchmark for Land Use and Land Cover Classification. IEEE JSTARS.
