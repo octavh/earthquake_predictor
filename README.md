@@ -44,17 +44,23 @@ earthquake_predictor/
 
 ```cmd
 # 1. Descarcă proiectul
-git clone https://github.com/[username]/earthquake_predictor.git
+git clone https://github.com/octavh/earthquake_predictor.git
 cd earthquake_predictor
 
 # 2. Creează mediu virtual
-python -m venv .venv
-.venv\Scripts\activate
+python3 -m venv .venv
 
-# 3. Instalează librarii
+# 3. Activeaza mediul virtual
+source .venv/bin/activate
+
+# 4. Instalează librarii
 pip install -r librarii.txt
 
-# 4. Pornește serverul
+# 5. Descarca datele (aprox. 10 min, exista feature-uri care utilizeaza aceste date)
+# Fisierele cu date nu au fost adaugate pe Github, deoarece intrec limita de spatiu pentru fisiere.
+python3 scripts/model1/download_data.py
+
+# 6. Pornește serverul
 uvicorn backend.main:app --reload
 ```
 
