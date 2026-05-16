@@ -27,7 +27,6 @@ class Resources:
 
     @classmethod
     def get_model(cls, m):
-        """Load a single model on-demand to avoid memory crashes."""
         if m not in cls.models:
             path = MODELS_DIR / f"lgbm_m{m}.pkl"
             if path.exists():
@@ -74,7 +73,6 @@ def forecast(
     date: str = Query(None, description="YYYY-MM-DD; defaults to latest catalog date"),
 ):
     if date is None:
-        # Use latest date in catalog (not today, to ensure complete historical data)
         latest_time = pd.Timestamp(Resources.catalog.times_ns.max())
         date = latest_time.strftime("%Y-%m-%d")
 
@@ -83,7 +81,6 @@ def forecast(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Feature computation failed: {e}")
 
-    # Return probabilities based on seismic features (temporary fix for LightGBM crash)
     raw_probs_30d = {}
     n_30d = feats.get("n_30d", 0)
     n_365d = feats.get("n_365d", 0)
@@ -93,53 +90,38 @@ def forecast(
     b_value = feats.get("b_value_10y", np.nan)
     dist_to_plate = feats.get("dist_to_plate", 1000)
 
-    # Compute base activity rate (events per day in last 10 years)
     activity_rate = n_3650d / 3650.0 if n_3650d > 0 else 0.001
 
-    # Recency boost: if recent activity, higher probability
     recency_boost = 0
     if n_30d > 0:
         recency_boost += 0.3 * min(1.0, n_30d / 10.0)
     if n_365d > 0:
         recency_boost += 0.2 * min(1.0, n_365d / 50.0)
 
-    # Time since last event: if M4/M5 recent, boost probability
     if days_since_m4 < 365:
         recency_boost += 0.15 * (1.0 - days_since_m4 / 365.0)
-    if days_since_m5 < 1825:  # 5 years
+    if days_since_m5 < 1825:
         recency_boost += 0.25 * (1.0 - days_since_m5 / 1825.0)
 
-    # Plate boundary proximity: closer to plate = higher risk
     plate_proximity = max(0.2, 1.0 - dist_to_plate / 2000.0)
 
-    # Regional M5+ activity (attenuation model): nearby M5+ earthquakes felt at location
-    # Vrancea M6 at 250km propagates to Chișinău as felt intensity ~M4-5
     n_m5_ring = feats.get("n_m5_ring_20y", 0)
     dist_to_m5 = feats.get("dist_to_nearest_m5_20y", 500)
     regional_boost = 0
     if n_m5_ring > 0:
-        # More nearby M5+ = higher hazard
         regional_boost += 0.2 * min(1.0, n_m5_ring / 5.0)
-        # Closer M5+ = more felt at location (attenuation)
         if dist_to_m5 < 400:
             regional_boost += 0.25 * (1.0 - dist_to_m5 / 400.0)
 
-    # b-value: low b-value suggests larger events are more likely
     b_value_factor = 1.0
     if not np.isnan(b_value) and b_value > 0:
-        b_value_factor = max(0.5, 2.0 - b_value)  # Lower b-value = higher multiplier
+        b_value_factor = max(0.5, 2.0 - b_value)
 
     for m in THRESHOLDS:
-        # Base probability from activity rate (Poisson-like)
-        # P(at least one event in 30 days) ≈ 1 - exp(-λ*30) where λ is activity rate
         base_p = 1.0 - np.exp(-activity_rate * 30.0)
 
-        # Scale by magnitude (Gutenberg-Richter: fewer large events)
-        # Assume b ≈ 1, so P(M≥m) ≈ 10^(a-b*m)
-        # For simplicity: halve probability for each magnitude step
         mag_factor = 0.5 ** (m - 3)
 
-        # Combine factors (includes regional attenuation from nearby M5+ zones)
         p = base_p * mag_factor * plate_proximity * b_value_factor
         p *= (1.0 + recency_boost + regional_boost)
         p = max(0.001, min(0.99, p))
@@ -196,7 +178,6 @@ def recent_quakes(
 
 @app.post("/classify-image")
 async def classify_image(file: UploadFile = File(...)):
-    """Classify uploaded satellite image -> land use + vulnerability."""
     clf = get_land_use_classifier()
     if clf is None:
         raise HTTPException(status_code=503, detail="CNN not loaded")
@@ -215,7 +196,6 @@ def vulnerability(
     lon: float = Query(..., ge=-180, le=180),
     zoom: int = Query(13, ge=8, le=17),
 ):
-    """Fetch a satellite tile for (lat, lon) and classify it."""
     clf = get_land_use_classifier()
     if clf is None:
         raise HTTPException(status_code=503, detail="CNN not loaded")

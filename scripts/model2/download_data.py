@@ -1,4 +1,3 @@
-"""Download and extract EuroSAT (RGB version)."""
 import zipfile
 from pathlib import Path
 

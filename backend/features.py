@@ -76,17 +76,14 @@ class CatalogIndex:
 
         idx = np.where(time_mask)[0]
 
-        # Calculate centroid (weighted by magnitude)
         mags = self.mags[idx]
         lats = self.lats[idx]
         lons = self.lons[idx]
 
-        # Weight by magnitude to emphasize bigger earthquakes
         weights = 10.0 ** (mags - 3.0)
         center_lat_cluster = np.average(lats, weights=weights)
         center_lon_cluster = np.average(lons, weights=weights)
 
-        # Distance from location to seismic center
         dist = haversine(center_lat, center_lon, center_lat_cluster, center_lon_cluster)
         return float(dist)
 
@@ -110,7 +107,6 @@ class CatalogIndex:
             recent_dist = haversine(center_lat, center_lon, self.lats[recent_idx], self.lons[recent_idx])
             recent_mags = self.mags[recent_idx]
 
-            # Local counts
             local_mask = recent_dist <= radius_km
             local_mags = recent_mags[local_mask]
             n_m3_20y = int((local_mags >= 3.0).sum())
@@ -118,7 +114,6 @@ class CatalogIndex:
             n_m6_20y = int((local_mags >= 6.0).sum())
             n_m7_20y = int((local_mags >= 7.0).sum())
 
-            # Regional ring
             in_ring = (recent_dist > radius_km) & (recent_dist <= EXTENDED_RADIUS_KM)
             ring_mags = recent_mags[in_ring]
             ring_dists = recent_dist[in_ring]
@@ -222,7 +217,6 @@ class CatalogIndex:
         else:
             av = np.nan
 
-        # Use adaptive depth calculation (widens search if needed)
         mean_depth = self._compute_adaptive_depth(center_lat, center_lon, prediction_date, radius_km)
 
         return {
@@ -258,17 +252,11 @@ class CatalogIndex:
 
         future_mags = self.mags[future_idx]
         return {f"label_m{m}": int((future_mags >= m).any()) for m in [3, 4, 5, 6, 7]}
-    
-    # ============================================================
-# Land-use vulnerability classifier (CNN)
-# ============================================================
 import torch
 import torch.nn as nn
 from torchvision import transforms
 from PIL import Image
 
-# Vulnerability proxy mapping: land-use class -> exposure score (0-100)
-# Higher = more population/structures exposed in case of an earthquake
 VULNERABILITY_SCORES = {
     "Residential": 95,
     "Industrial": 85,
@@ -303,7 +291,6 @@ class _SmallCNN(nn.Module):
 
 
 class LandUseClassifier:
-    # EuroSAT classes (fixed, known at compile time)
     EUROSAT_CLASSES = [
         "AnnualCrop", "Forest", "HerbaceousVegetation", "Highway",
         "Industrial", "Pasture", "PermanentCrop", "Residential",
@@ -315,7 +302,6 @@ class LandUseClassifier:
         self.input_size = 64
         bundle = None
 
-        # Try OpenVINO IR first (.xml + .bin) - doesn't need .pth
         ir_path = model_path.with_suffix(".xml")
         if ir_path.exists():
             try:
@@ -346,7 +332,6 @@ class LandUseClassifier:
         ])
 
     def _load_bundle(self, model_path):
-        """Load PyTorch bundle if it exists."""
         if model_path.exists():
             try:
                 bundle = torch.load(model_path, map_location="cpu", weights_only=False)
@@ -358,7 +343,6 @@ class LandUseClassifier:
         return None
 
     def _init_pytorch(self, bundle):
-        """Initialize PyTorch fallback path."""
         if bundle is None:
             raise RuntimeError("PyTorch fallback needs a valid .pth bundle file")
 
@@ -384,15 +368,12 @@ class LandUseClassifier:
         input_array = tensor.numpy()
 
         if self.runtime == "openvino":
-            # OpenVINO expects NCHW format
             input_array = np.expand_dims(input_array, 0)
             result = self.compiled_model([input_array])
             logits = result[self.output_layer][0]
-            # Softmax in numpy
             exp_logits = np.exp(logits - logits.max())
             probs = exp_logits / exp_logits.sum()
         else:
-            # PyTorch path
             with torch.no_grad():
                 tensor_batch = tensor.unsqueeze(0).to(self.device)
                 logits = self.model(tensor_batch)
@@ -402,7 +383,6 @@ class LandUseClassifier:
         top_class = self.classes[top_idx]
         top_prob = float(probs[top_idx])
 
-        # Weighted vulnerability: each class probability * its exposure score
         weighted = sum(
             float(probs[i]) * VULNERABILITY_SCORES.get(c, 0)
             for i, c in enumerate(self.classes)

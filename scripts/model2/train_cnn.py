@@ -1,4 +1,3 @@
-"""Train a small CNN on EuroSAT to classify satellite tiles into land-use categories."""
 import sys
 from pathlib import Path
 
@@ -121,7 +120,6 @@ def main():
             f"val_acc={val_correct/val_total:.3f}"
         )
 
-    # Final evaluation on held-out test set
     model.eval()
     all_preds, all_truth = [], []
     with torch.no_grad():
@@ -136,7 +134,6 @@ def main():
     print("\nConfusion matrix:")
     print(confusion_matrix(all_truth, all_preds))
 
-    # Save model + class names
     torch.save({
         "state_dict": model.state_dict(),
         "classes": classes,

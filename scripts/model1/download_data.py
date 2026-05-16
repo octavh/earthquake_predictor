@@ -1,24 +1,3 @@
-"""
-Pipeline complet pentru date cutremure: Download, extrage, curata, pregateste pentru antrenare.
-
-FAZA 1: EXTRACTIE DATE
-- USGS: scarita global (1990-prezent), intervale 10 zile
-- INFP: scarita ~40k cutremure istorice Vrancea din https://www.infp.ro/data/romplus.txt
-
-FAZA 2-4: PROCESARE
-- Filtreaza doar cutremure naturale (elimina nucleare, dinamita, etc)
-- Parseaza format fixed-width pentru INFP
-- Extrage coloane: time, latitude, longitude, depth, mag
-- Elimina valori nule, duplicate, magnitude=0, inainte de 1990
-
-FAZA 5: SALVARE
-- Salveaza earthquakes.csv - date gata pentru antrenare
-- Doar 5 coloane necesare
-- Fara valori nevalide
-
-Utilizare: python scripts/download_data.py
-"""
-
 import requests
 import pandas as pd
 import numpy as np
@@ -103,7 +82,6 @@ def load_usgs_progress() -> datetime | None:
         return datetime.strptime(text.split("|")[0], "%Y-%m-%d")
     except Exception:
         return None
-
 
 def save_usgs_progress(day: datetime) -> None:
     PROGRESS_FILE.write_text(day.strftime("%Y-%m-%d"))
@@ -317,7 +295,6 @@ def merge_and_clean(usgs_df: pd.DataFrame, infp_df: pd.DataFrame) -> pd.DataFram
     combined = combined.drop_duplicates()
     print(f"  Dupa eliminare duplicate: {len(combined):,} (eliminat {before_dedup - len(combined):,})")
 
-    print(f"\nDeduplicare coarse (cross-catalog)...")
     combined["_t_round"] = pd.to_datetime(combined["time"], utc=True, errors="coerce").dt.floor("10s")
     combined["_lat_round"] = (combined["latitude"] * 20).round() / 20
     combined["_lon_round"] = (combined["longitude"] * 20).round() / 20

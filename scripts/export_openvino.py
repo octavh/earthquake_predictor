@@ -1,14 +1,3 @@
-"""
-Convert trained models to OpenVINO IR format.
-
-Uses subprocess isolation to avoid library conflicts that segfault when
-LightGBM, PyTorch, ONNX, and OpenVINO are all loaded into one Python process.
-
-Note: LightGBM models are exported to ONNX but not converted to OpenVINO IR.
-OpenVINO does not support the ai.onnx.ml.TreeEnsembleClassifier operator that
-LightGBM uses, so tree-based models stay as .pkl files served via joblib.
-The CNN is the model that actually benefits from OpenVINO acceleration.
-"""
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +9,6 @@ PYTHON = sys.executable
 
 
 def run_inline(script: str, label: str) -> bool:
-    """Run a Python snippet in a fresh subprocess. Returns True on success."""
     print(f"  Converting {label}...")
     result = subprocess.run(
         [PYTHON, "-c", script],
@@ -36,7 +24,6 @@ def run_inline(script: str, label: str) -> bool:
     return False
 
 
-# ---------- LightGBM .pkl -> ONNX (kept as bonus, not converted further) ----------
 LGBM_TO_ONNX = """
 import joblib
 from pathlib import Path
@@ -57,7 +44,6 @@ with dst.open('wb') as f:
 print(f'wrote {{dst.name}}')
 """
 
-# ---------- CNN .pth -> ONNX ----------
 CNN_TO_ONNX = """
 import sys, torch
 from pathlib import Path
@@ -84,7 +70,6 @@ out_name = Path('{dst}').name
 print(f'wrote {{out_name}}')
 """
 
-# ---------- ONNX -> OpenVINO IR ----------
 ONNX_TO_IR = """
 import openvino as ov
 from pathlib import Path
@@ -127,7 +112,6 @@ def main():
 
     print("\n[3/3] .onnx -> OpenVINO IR (.xml + .bin)")
     for onnx_path in onnx_files:
-        # Skip LightGBM models — OpenVINO doesn't support tree-ensemble operators
         if onnx_path.stem.startswith("lgbm_"):
             print(f"  skipping {onnx_path.name} (LightGBM trees not supported by OpenVINO)")
             continue

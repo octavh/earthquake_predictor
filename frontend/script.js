@@ -1,4 +1,3 @@
-// Info modal - with error handling
 function setupModal() {
     const infoBtn = document.getElementById('infoBtn');
     const closeBtn = document.getElementById('closeBtn');
@@ -106,7 +105,6 @@ function renderResults(data, vuln) {
         <div id="mini-map" style="width: 100%; height: 150px; margin-top: 12px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.2);"></div>
     </div>`;
 
-    // Hazard section
     html += `<div class="result-section">
         <h2>Hazard Seismic</h2>`;
 
@@ -132,7 +130,6 @@ function renderResults(data, vuln) {
     </div>
     </div>`;
 
-    // Vulnerability section
     if (vuln) {
         const exposure = vuln.vulnerability_score;
         const hazard = m5_prob;
@@ -156,7 +153,6 @@ function renderResults(data, vuln) {
         </div>`;
     }
 
-    // Context section
     const m3_count = feats.n_m3_20y || 0;
     const m5_count = feats.n_m5_20y || 0;
     const m6_count = feats.n_m6_20y || 0;
@@ -186,12 +182,10 @@ function renderResults(data, vuln) {
 
     document.getElementById('results').innerHTML = html;
 
-    // Render mini-map in the location section
     setTimeout(() => {
         const miniMapEl = document.getElementById('mini-map');
         const radius = parseInt(document.getElementById('radius').value);
 
-        // Destroy old map if it exists
         if (miniMapEl._leafletMap) {
             miniMapEl._leafletMap.remove();
             miniMapEl._leafletMap = null;
@@ -211,7 +205,6 @@ function renderResults(data, vuln) {
             maxZoom: 18,
         }).addTo(miniMap);
 
-        // Add radius circle
         const circle = L.circle([lat, lon], {
             radius: radius * 1000,
             color: '#0ea5e9',
@@ -221,7 +214,6 @@ function renderResults(data, vuln) {
             dashArray: '4, 3'
         }).addTo(miniMap);
 
-        // Add center marker
         L.circleMarker([lat, lon], {
             radius: 7,
             fillColor: '#fff',
@@ -234,7 +226,6 @@ function renderResults(data, vuln) {
         miniMapEl._leafletMap = miniMap;
         miniMap.invalidateSize();
 
-        // Fit the circle perfectly in the map view
         miniMap.fitBounds(circle.getBounds(), { padding: [30, 30] });
     }, 100);
 }
