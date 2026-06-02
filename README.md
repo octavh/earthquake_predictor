@@ -73,6 +73,57 @@ Apasă pe o locație de pe hartă și vezi:
 - Gradul de vulnerabilitate de folosire a terenului
 - Indicele de risc total
 
+## Rezultate și evaluare
+
+Toate cifrele de mai jos sunt reproductibile rulând `python scripts/evaluate.py`. Artefactele complete (tabele markdown, confusion matrix, galerie de erori) sunt salvate în [evaluation/](evaluation/).
+
+### Modelele tabulare (LightGBM, holdout temporal post-2020)
+
+Test set: 82.301 înregistrări cu `prediction_date >= 2020-01-01` din `training_set.csv` (split temporal pentru a evita scurgeri de date).
+
+| Prag | Rata pozitivă | Brier (LGBM) | Brier (baseline constant) | LogLoss (LGBM) | LogLoss (baseline) | ROC-AUC (LGBM) |
+|---|---:|---:|---:|---:|---:|---:|
+| M≥3 | 0.700 | **0.1389** | 0.2102 | **0.4277** | 0.6112 | **0.871** |
+| M≥4 | 0.274 | **0.1773** | 0.1990 | **0.5329** | 0.5873 | **0.756** |
+| M≥5 | 0.047 | 0.1263 | **0.0443** | 0.3903 | **0.1880** | **0.797** |
+| M≥6 | 0.006 | 0.0509 | **0.0055** | 0.1537 | **0.0345** | **0.804** |
+| M≥7 | 0.0005 | 0.1183 | **0.0005** | 1.8199 | **0.0041** | **0.649** |
+
+**Baseline:** predictor constant care prezice rata empirică a clasei pozitive (AUC nedefinit — predicție constantă).
+
+**Interpretare:** la pragurile dese (M≥3, M≥4) modelul bate baseline-ul pe toți indicatorii. La pragurile foarte rare (M≥5, 6, 7) baseline-ul constant calibrat are Brier/LogLoss mai mici pentru că predicția "rata empirică pentru toți" e bine calibrată când clasa pozitivă apare în <5% din cazuri — totuși baseline-ul nu discriminează deloc (AUC = 0.5), pe când modelul atinge AUC 0.65–0.80. Este tradeoff-ul clasic calibrare vs discriminare; modelul rămâne util pentru ranking-ul locațiilor după risc.
+
+### Modelul CNN (EuroSAT, holdout 10% = 2700 imagini)
+
+| Model | Test accuracy | Comentariu |
+|---|---:|---|
+| Random predictor | 0.1015 | 10 clase ~echilibrate → ~10% |
+| Majority class (`Residential`) | 0.1163 | prezice mereu clasa dominantă |
+| SmallCNN custom (3 conv blocks, 8 epoci, fără transfer learning, 64×64) | 0.8874 | arhitectura inițială |
+| **MobileNetV3-Small + transfer learning + augmentări + 224×224** (curent) | **0.9789** | 5 epoci head warmup + 10 epoci fine-tune cosine LR |
+
+**Ablation arhitectură:** trecerea de la SmallCNN antrenat from-scratch la MobileNetV3-Small pretrenat pe ImageNet (cu fine-tune two-phase, augmentări și input 224×224) aduce **+9.1 puncte procentuale accuracy** pe același test split (seed=42).
+
+Raport pe clase (model curent, macro-F1 = 0.978):
+
+| Clasă | Precision | Recall | F1 | Support |
+|---|---:|---:|---:|---:|
+| AnnualCrop | 0.967 | 0.967 | 0.967 | 300 |
+| Forest | 0.990 | 0.990 | 0.990 | 297 |
+| HerbaceousVegetation | 0.973 | 0.970 | 0.972 | 302 |
+| Highway | 0.974 | 0.985 | 0.980 | 269 |
+| Industrial | 0.996 | 0.977 | 0.986 | 257 |
+| Pasture | 0.953 | 0.973 | 0.963 | 187 |
+| PermanentCrop | 0.992 | 0.969 | 0.980 | 254 |
+| Residential | 0.984 | 0.997 | 0.991 | 314 |
+| River | 0.960 | 0.976 | 0.968 | 245 |
+| SeaLake | 0.993 | 0.982 | 0.987 | 275 |
+
+### Vizualizări de erori
+
+- [evaluation/cnn_confusion_matrix.png](evaluation/cnn_confusion_matrix.png) — matrice de confuzie completă. Erorile dominante sunt confuzii semantic apropiate: `River` ↔ `Highway` (5 cazuri — forme liniare similare în imagini satelitare), `HerbaceousVegetation` ↔ `Pasture` (5 cazuri — texturi vegetale aproape identice), `Industrial` ↔ `Residential` (5 cazuri — acoperișuri urbane similare).
+- [evaluation/cnn_misclassified.png](evaluation/cnn_misclassified.png) — galerie cu 16 din cele 57 imagini clasificate greșit; confirmă vizual că majoritatea erorilor sunt cazuri genuin ambigue chiar și pentru un observator uman.
+
 ## API
 
 Serverul oferă aceste adrese:

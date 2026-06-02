@@ -2,7 +2,7 @@ data/*
 !data/.gitkeep
 .DS_Store
 notebooks/
-models/old
+evaluation/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
