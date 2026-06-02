@@ -121,8 +121,8 @@ Raport pe clase (model curent, macro-F1 = 0.978):
 
 ### Vizualizări de erori
 
-- [evaluation/cnn_confusion_matrix.png](evaluation/cnn_confusion_matrix.png) — matrice de confuzie completă. Erorile dominante sunt confuzii semantic apropiate: `River` ↔ `Highway` (5 cazuri — forme liniare similare în imagini satelitare), `HerbaceousVegetation` ↔ `Pasture` (5 cazuri — texturi vegetale aproape identice), `Industrial` ↔ `Residential` (5 cazuri — acoperișuri urbane similare).
-- [evaluation/cnn_misclassified.png](evaluation/cnn_misclassified.png) — galerie cu 16 din cele 57 imagini clasificate greșit; confirmă vizual că majoritatea erorilor sunt cazuri genuin ambigue chiar și pentru un observator uman.
+- [evaluation/cnn_confusion_matrix.png](eval/cnn_confusion_matrix.png) — matrice de confuzie completă. Erorile dominante sunt confuzii semantic apropiate: `River` ↔ `Highway` (5 cazuri — forme liniare similare în imagini satelitare), `HerbaceousVegetation` ↔ `Pasture` (5 cazuri — texturi vegetale aproape identice), `Industrial` ↔ `Residential` (5 cazuri — acoperișuri urbane similare).
+- [evaluation/cnn_misclassified.png](eval/cnn_misclassified.png) — galerie cu 16 din cele 57 imagini clasificate greșit; confirmă vizual că majoritatea erorilor sunt cazuri genuin ambigue chiar și pentru un observator uman.
 
 ## API
 
