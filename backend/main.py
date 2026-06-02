@@ -2,8 +2,8 @@ import io
 import math
 from pathlib import Path
 
-import joblib
 import numpy as np
+import onnxruntime as ort
 import pandas as pd
 import requests
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -18,28 +18,49 @@ MODELS_DIR = ROOT / "models"
 FRONTEND_DIR = ROOT / "frontend"
 THRESHOLDS = [3, 4, 5, 6, 7]
 
+FEATURE_COLS = [
+    "lat", "lon",
+    "n_30d", "n_90d", "n_365d", "n_3650d",
+    "max_mag_365d", "mean_mag_365d",
+    "days_since_m4", "days_since_m5",
+    "b_value_10y", "a_value_10y",
+    "mean_depth_365d", "dist_to_plate",
+    "n_m5_ring_10y", "n_m6_ring_10y",
+    "dist_to_nearest_m5_10y", "dist_to_nearest_m6_ever",
+]
+
 app = FastAPI(title="Earthquake Forecasting API")
 
 class Resources:
     catalog = None
-    models = {}
-    feature_cols = None
+    sessions = {}
+    feature_cols = FEATURE_COLS
 
     @classmethod
-    def get_model(cls, m):
-        if m not in cls.models:
-            path = MODELS_DIR / f"lgbm_m{m}.pkl"
+    def get_session(cls, m):
+        if m not in cls.sessions:
+            path = MODELS_DIR / f"lgbm_m{m}.onnx"
             if path.exists():
-                print(f"Loading lgbm_m{m}.pkl...")
-                cls.models[m] = joblib.load(path)
+                print(f"Loading lgbm_m{m}.onnx...")
+                cls.sessions[m] = ort.InferenceSession(
+                    str(path), providers=["CPUExecutionProvider"]
+                )
             else:
                 return None
-        return cls.models[m]
+        return cls.sessions[m]
 
 print("Initializing resources...")
 print("Loading catalog index...")
 Resources.catalog = CatalogIndex(CATALOG_PATH)
 print("✓ Catalog loaded")
+
+print("Loading LightGBM ONNX models...")
+for m in THRESHOLDS:
+    sess = Resources.get_session(m)
+    if sess is not None:
+        print(f"✓ lgbm_m{m}.onnx loaded")
+    else:
+        print(f"✗ lgbm_m{m}.onnx not found")
 
 CNN_PATH = MODELS_DIR / "cnn_eurosat.xml"
 land_use_classifier = None
@@ -59,7 +80,7 @@ def get_land_use_classifier():
 def root():
     return {
         "status": "alive",
-        "tabular_models": list(Resources.models.keys()),
+        "tabular_models": list(Resources.sessions.keys()),
         "cnn_loaded": CNN_PATH.exists(),
     }
 
@@ -81,52 +102,27 @@ def forecast(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Feature computation failed: {e}")
 
+    x = np.array(
+        [[feats.get(col, np.nan) for col in Resources.feature_cols]],
+        dtype=np.float32,
+    )
+    x = np.nan_to_num(x, nan=0.0, posinf=9999.0, neginf=-9999.0)
+
     raw_probs_30d = {}
-    n_30d = feats.get("n_30d", 0)
-    n_365d = feats.get("n_365d", 0)
-    n_3650d = feats.get("n_3650d", 0)
-    days_since_m4 = feats.get("days_since_m4", 9999)
-    days_since_m5 = feats.get("days_since_m5", 9999)
-    b_value = feats.get("b_value_10y", np.nan)
-    dist_to_plate = feats.get("dist_to_plate", 1000)
-
-    activity_rate = n_3650d / 3650.0 if n_3650d > 0 else 0.001
-
-    recency_boost = 0
-    if n_30d > 0:
-        recency_boost += 0.3 * min(1.0, n_30d / 10.0)
-    if n_365d > 0:
-        recency_boost += 0.2 * min(1.0, n_365d / 50.0)
-
-    if days_since_m4 < 365:
-        recency_boost += 0.15 * (1.0 - days_since_m4 / 365.0)
-    if days_since_m5 < 1825:
-        recency_boost += 0.25 * (1.0 - days_since_m5 / 1825.0)
-
-    plate_proximity = max(0.2, 1.0 - dist_to_plate / 2000.0)
-
-    n_m5_ring = feats.get("n_m5_ring_20y", 0)
-    dist_to_m5 = feats.get("dist_to_nearest_m5_20y", 500)
-    regional_boost = 0
-    if n_m5_ring > 0:
-        regional_boost += 0.2 * min(1.0, n_m5_ring / 5.0)
-        if dist_to_m5 < 400:
-            regional_boost += 0.25 * (1.0 - dist_to_m5 / 400.0)
-
-    b_value_factor = 1.0
-    if not np.isnan(b_value) and b_value > 0:
-        b_value_factor = max(0.5, 2.0 - b_value)
-
     for m in THRESHOLDS:
-        base_p = 1.0 - np.exp(-activity_rate * 30.0)
-
-        mag_factor = 0.5 ** (m - 3)
-
-        p = base_p * mag_factor * plate_proximity * b_value_factor
-        p *= (1.0 + recency_boost + regional_boost)
-        p = max(0.001, min(0.99, p))
-
+        sess = Resources.get_session(m)
+        if sess is None:
+            continue
+        try:
+            outputs = sess.run(None, {"input": x})
+            probs = outputs[1]
+            p = float(probs[0, 1])
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Model M≥{m} prediction failed: {e}")
         raw_probs_30d[m] = p
+
+    if not raw_probs_30d:
+        raise HTTPException(status_code=503, detail="No LightGBM models loaded")
 
     scaled = {}
     for m, p30 in raw_probs_30d.items():

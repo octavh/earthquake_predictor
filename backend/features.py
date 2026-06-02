@@ -90,6 +90,7 @@ class CatalogIndex:
     def _regional_context(self, center_lat, center_lon, prediction_date, radius_km):
         pred_ns = np.datetime64(prediction_date, "ns")
         cutoff_20y_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=7300), "ns")
+        cutoff_10y_ns = np.datetime64(pd.Timestamp(prediction_date) - timedelta(days=3650), "ns")
 
         time_mask_20y = (self.times_ns < pred_ns) & (self.times_ns >= cutoff_20y_ns)
 
@@ -100,10 +101,14 @@ class CatalogIndex:
         n_m5_ring_20y = 0
         n_m6_ring_20y = 0
         dist_to_m5_20y = float(EXTENDED_RADIUS_KM)
+        n_m5_ring_10y = 0
+        n_m6_ring_10y = 0
+        dist_to_m5_10y = float(EXTENDED_RADIUS_KM)
         seismic_center_dist = self._find_seismic_center(center_lat, center_lon, prediction_date, 7300)
 
         if time_mask_20y.any():
             recent_idx = np.where(time_mask_20y)[0]
+            recent_times = self.times_ns[recent_idx]
             recent_dist = haversine(center_lat, center_lon, self.lats[recent_idx], self.lons[recent_idx])
             recent_mags = self.mags[recent_idx]
 
@@ -129,6 +134,25 @@ class CatalogIndex:
             else:
                 dist_to_m5_20y = float(EXTENDED_RADIUS_KM)
 
+            mask_10y = recent_times >= cutoff_10y_ns
+            if mask_10y.any():
+                dist_10y = recent_dist[mask_10y]
+                mags_10y = recent_mags[mask_10y]
+                in_ring_10y = (dist_10y > radius_km) & (dist_10y <= EXTENDED_RADIUS_KM)
+                ring_mags_10y = mags_10y[in_ring_10y]
+                ring_dists_10y = dist_10y[in_ring_10y]
+
+                n_m5_ring_10y = int((ring_mags_10y >= 5.0).sum())
+                n_m6_ring_10y = int((ring_mags_10y >= 6.0).sum())
+
+                local_m5_mask_10y = (dist_10y <= radius_km) & (mags_10y >= 5.0)
+                if local_m5_mask_10y.any():
+                    dist_to_m5_10y = 0.0
+                elif (ring_mags_10y >= 5.0).any():
+                    dist_to_m5_10y = float(ring_dists_10y[ring_mags_10y >= 5.0].min())
+                else:
+                    dist_to_m5_10y = float(EXTENDED_RADIUS_KM)
+
         m6_mask = self.mags >= 6.0
         if m6_mask.any():
             m6_dist = haversine(center_lat, center_lon, self.lats[m6_mask], self.lons[m6_mask])
@@ -144,6 +168,9 @@ class CatalogIndex:
             "n_m5_ring_20y": n_m5_ring_20y,
             "n_m6_ring_20y": n_m6_ring_20y,
             "dist_to_nearest_m5_20y": dist_to_m5_20y,
+            "n_m5_ring_10y": n_m5_ring_10y,
+            "n_m6_ring_10y": n_m6_ring_10y,
+            "dist_to_nearest_m5_10y": dist_to_m5_10y,
             "dist_to_nearest_m6_ever": dist_to_m6_ever,
             "seismic_center_dist_20y": seismic_center_dist,
         }
