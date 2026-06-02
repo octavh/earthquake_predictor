@@ -75,9 +75,7 @@ Apasă pe o locație de pe hartă și vezi:
 
 ## Rezultate și evaluare
 
-Toate cifrele de mai jos sunt reproductibile rulând `python scripts/evaluate.py`. Artefactele complete (tabele markdown, confusion matrix, galerie de erori) sunt salvate în [evaluation/](evaluation/).
-
-### Modelele tabulare (LightGBM, holdout temporal post-2020)
+### Modelele tabulare (LightGBM)
 
 Test set: 82.301 înregistrări cu `prediction_date >= 2020-01-01` din `training_set.csv` (split temporal pentru a evita scurgeri de date).
 
