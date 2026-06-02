@@ -282,6 +282,7 @@ class CatalogIndex:
 import torch
 import torch.nn as nn
 from torchvision import transforms
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from PIL import Image
 
 VULNERABILITY_SCORES = {
@@ -298,23 +299,19 @@ VULNERABILITY_SCORES = {
 }
 
 
-class _SmallCNN(nn.Module):
-    def __init__(self, num_classes: int):
+class LandUseModel(nn.Module):
+    def __init__(self, num_classes: int = 10, pretrained: bool = False):
         super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.AdaptiveAvgPool2d((4, 4)),
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128 * 4 * 4, 256), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(256, num_classes),
-        )
+        weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1 if pretrained else None
+        self.backbone = mobilenet_v3_small(weights=weights)
+        in_feats = self.backbone.classifier[3].in_features
+        self.backbone.classifier[3] = nn.Linear(in_feats, num_classes)
 
     def forward(self, x):
-        return self.classifier(self.features(x))
+        return self.backbone(x)
+
+
+_SmallCNN = LandUseModel
 
 
 class LandUseClassifier:
@@ -326,53 +323,54 @@ class LandUseClassifier:
 
     def __init__(self, model_path: Path):
         model_path = Path(model_path)
-        self.input_size = 64
-        bundle = None
+
+        self.classes = self.EUROSAT_CLASSES
+        self.input_size = 224
+        self.normalize_mean = [0.485, 0.456, 0.406]
+        self.normalize_std = [0.229, 0.224, 0.225]
+
+        bundle = self._load_bundle(model_path)
 
         ir_path = model_path.with_suffix(".xml")
+        loaded = False
         if ir_path.exists():
             try:
                 import openvino as ov
                 core = ov.Core()
                 self.compiled_model = core.compile_model(str(ir_path), "CPU")
-                input_layer = next(iter(self.compiled_model.inputs))
-                output_layer = next(iter(self.compiled_model.outputs))
-                self.input_layer = input_layer
-                self.output_layer = output_layer
-                self.classes = self.EUROSAT_CLASSES
+                self.input_layer = next(iter(self.compiled_model.inputs))
+                self.output_layer = next(iter(self.compiled_model.outputs))
                 self.runtime = "openvino"
-                print(f"LandUseClassifier loaded (OpenVINO): {len(self.classes)} classes")
+                print(f"LandUseClassifier loaded (OpenVINO): {len(self.classes)} classes, input_size={self.input_size}")
+                loaded = True
             except Exception as e:
                 print(f"OpenVINO load failed ({e}), falling back to PyTorch")
-                bundle = self._load_bundle(model_path)
-                if bundle:
-                    self._init_pytorch(bundle)
-        else:
-            bundle = self._load_bundle(model_path)
-            if bundle:
-                self._init_pytorch(bundle)
+
+        if not loaded:
+            if bundle is None:
+                raise RuntimeError(f"No usable land-use model at {model_path} (neither .xml IR nor .pth bundle)")
+            self._init_pytorch(bundle)
 
         self.transform = transforms.Compose([
             transforms.Resize((self.input_size, self.input_size)),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+            transforms.Normalize(mean=self.normalize_mean, std=self.normalize_std),
         ])
 
     def _load_bundle(self, model_path):
         if model_path.exists():
             try:
                 bundle = torch.load(model_path, map_location="cpu", weights_only=False)
-                self.classes = bundle.get("classes", self.EUROSAT_CLASSES)
-                self.input_size = bundle.get("input_size", 64)
+                self.classes = bundle.get("classes", self.classes)
+                self.input_size = bundle.get("input_size", self.input_size)
+                self.normalize_mean = bundle.get("normalize_mean", self.normalize_mean)
+                self.normalize_std = bundle.get("normalize_std", self.normalize_std)
                 return bundle
             except Exception as e:
                 print(f"Warning: could not load bundle from {model_path.name}: {e}")
         return None
 
     def _init_pytorch(self, bundle):
-        if bundle is None:
-            raise RuntimeError("PyTorch fallback needs a valid .pth bundle file")
-
         if torch.backends.mps.is_available():
             self.device = torch.device("mps")
         elif torch.cuda.is_available():
@@ -380,11 +378,11 @@ class LandUseClassifier:
         else:
             self.device = torch.device("cpu")
 
-        self.model = _SmallCNN(num_classes=len(self.classes)).to(self.device)
+        self.model = LandUseModel(num_classes=len(self.classes)).to(self.device)
         self.model.load_state_dict(bundle["state_dict"])
         self.model.eval()
         self.runtime = "pytorch"
-        print(f"LandUseClassifier loaded (PyTorch): {len(self.classes)} classes")
+        print(f"LandUseClassifier loaded (PyTorch): {len(self.classes)} classes, input_size={self.input_size}")
 
     def classify_image(self, pil_image: Image.Image) -> dict:
         if pil_image.mode != "RGB":

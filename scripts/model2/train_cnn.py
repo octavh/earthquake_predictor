@@ -10,14 +10,23 @@ from torchvision import datasets, transforms
 from sklearn.metrics import classification_report, confusion_matrix
 
 ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT))
+from backend.features import LandUseModel, LandUseClassifier
+
 DATA_ROOT = ROOT / "data" / "model2"
 MODELS_DIR = ROOT / "models"
 MODELS_DIR.mkdir(exist_ok=True)
 
 BATCH_SIZE = 64
-EPOCHS = 8
-LR = 1e-3
+HEAD_EPOCHS = 5
+FINETUNE_EPOCHS = 10
+HEAD_LR = 1e-3
+FINETUNE_LR = 1e-4
+IMAGE_SIZE = 224
 SEED = 42
+
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 def find_class_root(extract_dir: Path) -> Path:
@@ -27,23 +36,78 @@ def find_class_root(extract_dir: Path) -> Path:
     return candidates[0].parent
 
 
-class SmallCNN(nn.Module):
-    def __init__(self, num_classes: int):
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.AdaptiveAvgPool2d((4, 4)),
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128 * 4 * 4, 256), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(256, num_classes),
-        )
+def build_transforms():
+    train_t = transforms.Compose([
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+    eval_t = transforms.Compose([
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+    return train_t, eval_t
 
-    def forward(self, x):
-        return self.classifier(self.features(x))
+
+class TransformSubset(torch.utils.data.Dataset):
+    def __init__(self, subset, transform):
+        self.subset = subset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.subset)
+
+    def __getitem__(self, i):
+        img, label = self.subset[i]
+        return self.transform(img), label
+
+
+def evaluate(model, loader, device):
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            out = model(xb)
+            correct += (out.argmax(1) == yb).sum().item()
+            total += xb.size(0)
+    return correct / total
+
+
+def train_phase(name, model, train_loader, val_loader, device, optimizer, criterion, epochs, scheduler=None):
+    print(f"\n=== Phase: {name} ({epochs} epochs) ===")
+    best_val = 0.0
+    for epoch in range(1, epochs + 1):
+        model.train()
+        loss_sum, correct, total = 0.0, 0, 0
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            optimizer.zero_grad()
+            out = model(xb)
+            loss = criterion(out, yb)
+            loss.backward()
+            optimizer.step()
+            loss_sum += loss.item() * xb.size(0)
+            correct += (out.argmax(1) == yb).sum().item()
+            total += xb.size(0)
+        if scheduler is not None:
+            scheduler.step()
+        val_acc = evaluate(model, val_loader, device)
+        best_val = max(best_val, val_acc)
+        lr_now = optimizer.param_groups[0]["lr"]
+        print(
+            f"  Epoch {epoch}/{epochs}  "
+            f"train_loss={loss_sum/total:.4f}  "
+            f"train_acc={correct/total:.3f}  "
+            f"val_acc={val_acc:.3f}  "
+            f"lr={lr_now:.1e}"
+        )
+    return best_val
 
 
 def main():
@@ -61,65 +125,63 @@ def main():
     class_root = find_class_root(DATA_ROOT)
     print(f"Loading dataset from {class_root}")
 
-    transform = transforms.Compose([
-        transforms.Resize((64, 64)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    ])
+    train_t, eval_t = build_transforms()
 
-    full_dataset = datasets.ImageFolder(str(class_root), transform=transform)
-    classes = full_dataset.classes
+    base_dataset = datasets.ImageFolder(str(class_root))
+    classes = base_dataset.classes
     num_classes = len(classes)
-    print(f"Total images: {len(full_dataset):,}, classes: {num_classes}")
+    print(f"Total images: {len(base_dataset):,}, classes: {num_classes}")
     print(f"Classes: {classes}")
 
-    n_test = int(len(full_dataset) * 0.1)
-    n_val = int(len(full_dataset) * 0.1)
-    n_train = len(full_dataset) - n_val - n_test
-    train_ds, val_ds, test_ds = random_split(
-        full_dataset, [n_train, n_val, n_test],
+    expected = LandUseClassifier.EUROSAT_CLASSES
+    assert classes == expected, (
+        f"ImageFolder classes {classes} do not match LandUseClassifier.EUROSAT_CLASSES {expected}. "
+        f"Vulnerability scoring would be silently wrong. Check the data layout under {class_root}."
+    )
+
+    n_test = int(len(base_dataset) * 0.1)
+    n_val = int(len(base_dataset) * 0.1)
+    n_train = len(base_dataset) - n_val - n_test
+    train_subset, val_subset, test_subset = random_split(
+        base_dataset, [n_train, n_val, n_test],
         generator=torch.Generator().manual_seed(SEED),
     )
+
+    train_ds = TransformSubset(train_subset, train_t)
+    val_ds = TransformSubset(val_subset, eval_t)
+    test_ds = TransformSubset(test_subset, eval_t)
     print(f"Splits: train={n_train}, val={n_val}, test={n_test}")
 
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, num_workers=2)
     test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, num_workers=2)
 
-    model = SmallCNN(num_classes).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=LR)
+    print("Building MobileNetV3-Small with ImageNet pretrained weights...")
+    model = LandUseModel(num_classes=num_classes, pretrained=True).to(device)
     criterion = nn.CrossEntropyLoss()
 
-    for epoch in range(1, EPOCHS + 1):
-        model.train()
-        train_loss, train_correct, train_total = 0, 0, 0
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            out = model(xb)
-            loss = criterion(out, yb)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item() * xb.size(0)
-            train_correct += (out.argmax(1) == yb).sum().item()
-            train_total += xb.size(0)
+    print("Freezing backbone, training new classifier head only...")
+    for p in model.backbone.parameters():
+        p.requires_grad = False
+    for p in model.backbone.classifier[3].parameters():
+        p.requires_grad = True
 
-        model.eval()
-        val_correct, val_total = 0, 0
-        with torch.no_grad():
-            for xb, yb in val_loader:
-                xb, yb = xb.to(device), yb.to(device)
-                out = model(xb)
-                val_correct += (out.argmax(1) == yb).sum().item()
-                val_total += xb.size(0)
+    head_params = [p for p in model.parameters() if p.requires_grad]
+    head_opt = optim.Adam(head_params, lr=HEAD_LR)
+    train_phase("head warmup", model, train_loader, val_loader, device, head_opt, criterion, HEAD_EPOCHS)
 
-        print(
-            f"Epoch {epoch}/{EPOCHS}  "
-            f"train_loss={train_loss/train_total:.4f} "
-            f"train_acc={train_correct/train_total:.3f} "
-            f"val_acc={val_correct/val_total:.3f}"
-        )
+    print("Unfreezing all parameters for full-network fine-tune...")
+    for p in model.parameters():
+        p.requires_grad = True
 
+    ft_opt = optim.Adam(model.parameters(), lr=FINETUNE_LR)
+    ft_sched = optim.lr_scheduler.CosineAnnealingLR(ft_opt, T_max=FINETUNE_EPOCHS)
+    best_val = train_phase(
+        "full fine-tune", model, train_loader, val_loader, device,
+        ft_opt, criterion, FINETUNE_EPOCHS, scheduler=ft_sched,
+    )
+
+    print("\n=== Test set performance ===")
     model.eval()
     all_preds, all_truth = [], []
     with torch.no_grad():
@@ -129,17 +191,24 @@ def main():
             all_preds.extend(out.argmax(1).cpu().numpy().tolist())
             all_truth.extend(yb.numpy().tolist())
 
-    print("\n=== Test set performance ===")
+    test_acc = float((np.array(all_preds) == np.array(all_truth)).mean())
+    print(f"test_acc={test_acc:.4f}  best_val_acc={best_val:.4f}")
     print(classification_report(all_truth, all_preds, target_names=classes))
-    print("\nConfusion matrix:")
+    print("Confusion matrix:")
     print(confusion_matrix(all_truth, all_preds))
 
+    out_path = MODELS_DIR / "cnn_eurosat.pth"
     torch.save({
         "state_dict": model.state_dict(),
         "classes": classes,
-        "input_size": 64,
-    }, MODELS_DIR / "cnn_eurosat.pth")
-    print(f"\nSaved {MODELS_DIR / 'cnn_eurosat.pth'}")
+        "input_size": IMAGE_SIZE,
+        "model_arch": "mobilenet_v3_small",
+        "normalize_mean": IMAGENET_MEAN,
+        "normalize_std": IMAGENET_STD,
+        "val_acc": best_val,
+        "test_acc": test_acc,
+    }, out_path)
+    print(f"\nSaved {out_path}")
 
 
 if __name__ == "__main__":
