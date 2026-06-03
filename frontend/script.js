@@ -187,6 +187,7 @@ function renderResults(data, vuln) {
         const miniMapEl = document.getElementById('mini-map');
         const radius = parseInt(document.getElementById('radius').value);
 
+        if (!miniMapEl) return;
         if (miniMapEl._leafletMap) {
             miniMapEl._leafletMap.remove();
             miniMapEl._leafletMap = null;
