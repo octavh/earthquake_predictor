@@ -232,6 +232,9 @@ function renderResults(data, vuln) {
 }
 
 document.getElementById('radius').addEventListener('change', () => {
+    let el = document.getElementById('radius');
+    if (el.value < 10) el.value = 10;
+    if (el.value > 500) el.value = 500;
     if (activeCircle && activeMarker) {
         const lat = activeMarker.getLatLng().lat;
         const lng = activeMarker.getLatLng().lng;
@@ -252,6 +255,9 @@ document.getElementById('radius').addEventListener('change', () => {
 });
 
 document.getElementById('days').addEventListener('change', () => {
+    let el = document.getElementById('days');
+    if (el.value < 1) el.value = 1;
+    if (el.value > 365) el.value = 365;
     if (activeCircle && activeMarker) {
         forecast(activeMarker._latlng.wrap().lat, activeMarker._latlng.wrap().lng);
     }
