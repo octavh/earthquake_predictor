@@ -41,7 +41,7 @@ let activeMarker = null;
 let activeCircle = null;
 
 map.on('click', (e) => {
-    const { lat, lng } = e.latlng.wrap();
+    const { lat, lng } = e.latlng;
 
     if (activeMarker) map.removeLayer(activeMarker);
     if (activeCircle) map.removeLayer(activeCircle);
@@ -65,7 +65,8 @@ map.on('click', (e) => {
         dashArray: '5, 5'
     }).addTo(map);
 
-    forecast(lat, lng);
+    forecast(activeMarker._latlng.wrap().lat, activeMarker._latlng.wrap().lng);
+
 });
 
 async function forecast(lat, lon) {
@@ -246,6 +247,6 @@ document.getElementById('radius').addEventListener('change', () => {
             dashArray: '5, 5'
         }).addTo(map);
 
-        forecast(lat, lng);
+        forecast(activeMarker._latlng.wrap().lat, activeMarker._latlng.wrap().lng);
     }
 });
