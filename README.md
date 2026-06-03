@@ -1,14 +1,14 @@
 # Platformă de Prognoză a Cutremurelor
 
-Hartă web care arată riscul de cutremur pentru orice locație. Folosește două modele AI: unul care studiază cutremurele trecute și altul care analizează imagini din sateliți pentru a vedea cât de populate sunt zonele.
+Hartă web care arată riscul de cutremur pentru orice locație. Folosește două modele AI: unul care determină probabilitatea unui cutremur într-o zonă și interval de timp, și altul care analizează imagini din sateliți pentru a identifica vulnerabilitatea terenului. 
 
-## Ce face acest proiect
+## Ce face această aplicație
 
 Apasă pe orice locație de pe harta lumii și vezi:
 
-1. Probabilitatea unui cutremur de magnitudine M≥3 / M≥4 / M≥5 / M≥6 / M≥7 într-o rază de 100 km în următoarele 30 de zile (modelul de prognoză LightGBM)
-2. Gradul de vulnerabilitate de folosire a terenului in raza selectata
-3. Un scor combinat de risc = probabilitatea cutremurului × cât de populate sunt zonele
+1. Probabilitatea unui cutremur de magnitudine M≥3 / M≥4 / M≥5 / M≥6 / M≥7 într-un zonă cu rază de la 10 până la 500 de km și într-un interval de timp de la o zi până la un an în viitor (modelul de prognoză LightGBM)
+2. Gradul de vulnerabilitate de folosire a terenului in raza selectata (modelul PyTorch)
+3. Un scor combinat de risc = probabilitatea cutremurului × gradul de vulnerabilitate a terenului
 
 ## Surse de date
 
