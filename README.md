@@ -181,7 +181,7 @@ Deschide [http://127.0.0.1:8000/app/](http://127.0.0.1:8000/app/) și apasă pe 
 
 **Re-antrenare opțională:**
 ```bash
-python scripts/model1/build_training_set.py    # reconstruiește training_set.csv (~10 min)
+python scripts/model1/build_training_set.py    # reconstruiește training_set.csv (~10 ore)
 python scripts/model1/train_tabular.py         # LightGBM cu CV + tuning (~15-25 min)
 python scripts/model2/train_cnn.py             # CNN transfer learning (~15-25 min pe MPS/CUDA)
 python scripts/export_openvino.py              # PyTorch → ONNX → OpenVINO IR
