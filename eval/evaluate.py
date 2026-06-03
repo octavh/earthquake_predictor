@@ -1,14 +1,3 @@
-"""End-to-end evaluation: tabular + CNN baselines, ablation, and error visualisations.
-
-Outputs (written to ./evaluation/):
-- tabular_results.md      — markdown table: brier, log-loss, AUC per threshold vs base-rate baseline
-- cnn_results.md          — markdown table: new MobileNetV3 vs old SmallCNN vs random vs majority
-- cnn_confusion_matrix.png
-- cnn_misclassified.png   — 16 misclassified test images with predicted vs true labels
-
-Run from project root: .venv/bin/python scripts/evaluate.py
-"""
-
 import sys
 from pathlib import Path
 
