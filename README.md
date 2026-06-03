@@ -122,7 +122,7 @@ Inspecția vizuală a anticipat confuziile observate ulterior în matricea de co
 | SmallCNN custom (3 conv blocks, 8 epoci, fără transfer) | 0.8874 | arhitectura inițială |
 | **MobileNetV3 + transfer learning + augmentări + 224×224** | **0.9789** | configurația curentă |
 
-**+9.1 puncte procentuale** față de SmallCNN antrenat from-scratch, pe același test split. Raport detaliat pe clase (macro-F1 = 0.978):
+**Ablation Study:** trecerea de la un CNN simplu la transfer learning cu MobileNetV3-Small pretrenat pe ImageNet (cu fine-tune two-phase, augmentări și input 224x224) aduce **+9.1 puncte procentuale accuracy** pe același test split (seed=42).
 
 | Clasă | Precision | Recall | F1 | Support |
 |---|---:|---:|---:|---:|
@@ -145,13 +145,10 @@ Inspecția vizuală a anticipat confuziile observate ulterior în matricea de co
 ## Limitări
 
 - **Catalog USGS incomplet sub oceane și pre-1990** → modelul underpredice riscul în zone slab instrumentate.
-- **Domain shift EuroSAT → Esri:** modelul a fost antrenat pe imagini Sentinel-2 (10 m/pixel), dar `/vulnerability` îi trimite fotografii aeriene Esri (rezoluție și culori diferite). Pe tile-uri urbane mari poate prezice greșit (ex: Tokyo clasificat ca SeaLake din cauza apei din Tokyo Bay).
-- **Scor vulnerabilitate cu greutăți subiective** (Residential=95, SeaLake=0) — heuristic, nu validat statistic.
 - **Calibrare slabă la M≥7** — AUC 0.65 e doar marginal mai bun decât ghicit; folosiți cu rezervă pentru valori absolute. Pentru ranking rămâne util.
 - **Fără modelare spațio-temporală** — fiecare punct prezis independent; clustering-ul aftershock-urilor nu e modelat.
 - **Predicții pe 30 de zile, nu pe ore** — NU este sistem de alertă seismică.
 
-**Cu mai mult timp:** Sentinel-2 tile source, calibrare Platt/isotonic, ETAS pentru aftershock-uri, re-antrenare automată lunară.
 
 ## Etică și impact
 
