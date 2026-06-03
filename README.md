@@ -101,7 +101,7 @@ Test set: 82.301 înregistrări cu `prediction_date >= 2020-01-01` din `training
 | SmallCNN custom (3 conv blocks, 8 epoci, fără transfer learning, 64×64) | 0.8874 | arhitectura inițială |
 | **MobileNetV3-Small + transfer learning + augmentări + 224×224** (curent) | **0.9789** | 5 epoci head warmup + 10 epoci fine-tune cosine LR |
 
-**Ablation arhitectură:** trecerea de la SmallCNN antrenat from-scratch la MobileNetV3-Small pretrenat pe ImageNet (cu fine-tune two-phase, augmentări și input 224×224) aduce **+9.1 puncte procentuale accuracy** pe același test split (seed=42).
+**Ablation Study:** trecerea de la un CNN simplu la transfer learning cu MobileNetV3-Small pretrenat pe ImageNet (cu fine-tune two-phase, augmentări și input 224×224) aduce **+9.1 puncte procentuale accuracy** pe același test split (seed=42).
 
 Raport pe clase (model curent, macro-F1 = 0.978):
 
