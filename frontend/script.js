@@ -250,3 +250,9 @@ document.getElementById('radius').addEventListener('change', () => {
         forecast(activeMarker._latlng.wrap().lat, activeMarker._latlng.wrap().lng);
     }
 });
+
+document.getElementById('days').addEventListener('change', () => {
+    if (activeCircle && activeMarker) {
+        forecast(activeMarker._latlng.wrap().lat, activeMarker._latlng.wrap().lng);
+    }
+});
