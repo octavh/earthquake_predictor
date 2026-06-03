@@ -41,7 +41,7 @@ let activeMarker = null;
 let activeCircle = null;
 
 map.on('click', (e) => {
-    const { lat, lng } = e.latlng;
+    const { lat, lng } = e.latlng.wrap();
 
     if (activeMarker) map.removeLayer(activeMarker);
     if (activeCircle) map.removeLayer(activeCircle);
