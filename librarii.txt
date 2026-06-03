@@ -17,3 +17,4 @@ onnxruntime
 onnxmltools
 onnxconverter-common
 onnxscript
+matplotlib
