@@ -6,11 +6,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from backend.features import CatalogIndex
 
-CATALOG = Path(__file__).parent.parent / "data" / "model1" / "earthquakes.csv"
-OUTPUT = Path(__file__).parent.parent / "data" / "model1" / "training_set.csv"
+CATALOG = Path(__file__).parent.parent.parent / "data" / "model1" / "earthquakes.csv"
+OUTPUT = Path(__file__).parent.parent.parent / "data" / "model1" / "training_set.csv"
 
 N_TRAIN = 500_000
 SEED = 42
