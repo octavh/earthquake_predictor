@@ -1,6 +1,6 @@
 # Platformă de Prognoză a Cutremurelor
 
-Hartă web care arată riscul de cutremur pentru orice locație. Folosește două modele AI: unul pe date structurate (catalog seismic) care estimează probabilitatea unui cutremur, și altul pe imagini satelitare care evaluează vulnerabilitatea terenului. Cele două se combină într-un singur scor de risc.
+Hartă web care arată riscul de cutremur pentru orice locație. Folosește două modele AI: unul pe date structurate (catalog seismic) care estimează probabilitatea unui cutremur, și altul pe imagini satelitare care evaluează vulnerabilitatea terenului. Ambele modele sunt utilizate pentru a determina gradul de risc intr-o regiune.
 
 | | |
 |---|---|
