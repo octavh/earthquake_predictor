@@ -37,6 +37,69 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
 }).addTo(map);
 
+// Keep Leaflet in sync when the container size changes (full-screen on mobile,
+// orientation flips, breakpoint crossings).
+setTimeout(() => map.invalidateSize(), 0);
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => map.invalidateSize(), 200);
+});
+window.addEventListener('orientationchange', () => {
+    setTimeout(() => map.invalidateSize(), 300);
+});
+
+// ── Mobile bottom-sheet behavior ──
+const sidebar = document.getElementById('sidebar');
+const sheetHandle = document.getElementById('sheetHandle');
+const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+if (sheetHandle && sidebar) {
+    let dragStartY = null;
+    let dragDelta = 0;
+    let dragging = false;
+
+    sheetHandle.addEventListener('pointerdown', (e) => {
+        if (!isMobile()) return;
+        dragging = true;
+        dragStartY = e.clientY;
+        dragDelta = 0;
+        sidebar.style.transition = 'none';
+        sheetHandle.setPointerCapture(e.pointerId);
+    });
+
+    sheetHandle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        dragDelta = e.clientY - dragStartY;
+        const collapsedOffset = sidebar.classList.contains('expanded')
+            ? 0
+            : sidebar.offsetHeight - 110;
+        const offset = Math.max(0, collapsedOffset + dragDelta);
+        sidebar.style.transform = `translateY(${offset}px)`;
+    });
+
+    const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        sidebar.style.transition = '';
+        sidebar.style.transform = '';
+        if (Math.abs(dragDelta) < 6) {
+            // Treat as a tap: toggle
+            sidebar.classList.toggle('expanded');
+        } else if (dragDelta < 0) {
+            sidebar.classList.add('expanded');
+        } else {
+            sidebar.classList.remove('expanded');
+        }
+        if (e.pointerId != null && sheetHandle.hasPointerCapture(e.pointerId)) {
+            sheetHandle.releasePointerCapture(e.pointerId);
+        }
+    };
+
+    sheetHandle.addEventListener('pointerup', endDrag);
+    sheetHandle.addEventListener('pointercancel', endDrag);
+}
+
 let activeMarker = null;
 let activeCircle = null;
 
@@ -72,6 +135,9 @@ map.on('click', (e) => {
 async function forecast(lat, lon) {
     const days = document.getElementById('days').value;
     const radius = document.getElementById('radius').value;
+
+    // On mobile, open the bottom sheet so the loading state + results are visible.
+    if (isMobile() && sidebar) sidebar.classList.add('expanded');
 
     document.getElementById('results').innerHTML =
         '<div class="result-section"><div class="loading"><span class="spinner"></span>Se calculează...</div></div>';
