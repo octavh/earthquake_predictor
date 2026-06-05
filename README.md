@@ -169,7 +169,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r librarii.txt
 
-# 3. Descarcă datele (~20 min, nu sunt în git din cauza dimensiunii)
+# 3. Descarcă datele (~13 ore, nu sunt în git din cauza dimensiunii)
 python3 scripts/model1/download_data.py    # USGS + INFP
 python3 scripts/model2/download_data.py    # EuroSAT
 
@@ -213,7 +213,7 @@ earthquake_predictor/
 └── README.md
 ```
 
-## Tehnologii
+## Librării utilizate
 
 Python 3.11, FastAPI, Uvicorn, LightGBM, scikit-learn, PyTorch + torchvision, ONNX Runtime, OpenVINO, Leaflet, pandas, numpy, matplotlib, Pillow.
 

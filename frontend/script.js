@@ -159,24 +159,26 @@ function renderResults(data, vuln) {
     const m6_count = feats.n_m6_20y || 0;
     const m7_count = feats.n_m7_20y || 0;
 
+    const fmtCount = (c) => Number(c) === 0 ? '-' : c;
+
     html += `<div class="result-section">
         <h2>Context Seismic</h2>
         <div class="context-grid">
             <div class="context-item">
                 <div class="context-label">M≥3 (20 ani)</div>
-                <div class="context-value">${m3_count}</div>
+                <div class="context-value">${fmtCount(m3_count)}</div>
             </div>
             <div class="context-item">
                 <div class="context-label">M≥5 (20 ani)</div>
-                <div class="context-value">${m5_count}</div>
+                <div class="context-value">${fmtCount(m5_count)}</div>
             </div>
             <div class="context-item">
                 <div class="context-label">M≥6 (20 ani)</div>
-                <div class="context-value">${m6_count}</div>
+                <div class="context-value">${fmtCount(m6_count)}</div>
             </div>
             <div class="context-item">
                 <div class="context-label">M≥7 (20 ani)</div>
-                <div class="context-value">${m7_count}</div>
+                <div class="context-value">${fmtCount(m7_count)}</div>
             </div>
         </div>
     </div>`;
