@@ -145,7 +145,7 @@ async function forecast(lat, lon) {
     try {
         const [forecastRes, vulnRes] = await Promise.all([
             fetch(`/forecast?lat=${lat}&lon=${lon}&days=${days}&radius_km=${radius}`),
-            fetch(`/vulnerability?lat=${lat}&lon=${lon}&zoom=13`).catch(() => null),
+            fetch(`/vulnerability?lat=${lat}&lon=${lon}&zoom=16&radius_km=${radius}`).catch(() => null),
         ]);
         const forecastData = await forecastRes.json();
         const vulnData = vulnRes && vulnRes.ok ? await vulnRes.json() : null;
@@ -199,15 +199,30 @@ function renderResults(data, vuln) {
 
     if (vuln) {
         const exposure = vuln.vulnerability_score;
-        const hazard = m5_prob;
+        // Hazard combinat = medie ponderată a probabilităților pe praguri de
+        // magnitudine (analog cu scorul de vulnerabilitate, care e medie ponderată
+        // peste clasele de teren). Ponderile accentuează magnitudinile distructive
+        // dar încă plauzibile (M≥5/M≥6); suma ponderilor = 1, deci hazard ∈ [0, 1].
+        const HAZARD_WEIGHTS = {
+            'M_ge_3': 0.05,
+            'M_ge_4': 0.10,
+            'M_ge_5': 0.20,
+            'M_ge_6': 0.30,
+            'M_ge_7': 0.35,
+        };
+        let hazard = 0;
+        for (const [key, w] of Object.entries(HAZARD_WEIGHTS)) {
+            hazard += (probs[key] || 0) * w;
+        }
         const riskScore = (hazard * exposure).toFixed(1);
-        const riskLevel = riskScore < 2 ? 'SCĂZUT' : riskScore < 5 ? 'MODERAT' : 'RIDICAT';
+        const rs = parseFloat(riskScore);
+        const riskLevel = rs < 2 ? 'SCĂZUT' : rs < 6 ? 'MODERAT' : 'RIDICAT';
 
         html += `<div class="result-section">
             <h2>Expunere</h2>
             <div style="text-align: center;">
                 <div class="exposure-value">${exposure.toFixed(1)} / 100</div>
-                <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">vulnerabilitate de folosire a terenului</div>
+                <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">vulnerabilitate de folosire a terenului${vuln.n_samples ? ` (media a ${vuln.n_samples} zone)` : ''}</div>
             </div>
         </div>`;
 

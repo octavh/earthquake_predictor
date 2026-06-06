@@ -1,5 +1,6 @@
 import io
 import math
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -186,37 +187,117 @@ async def classify_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Image processing failed: {e}")
 
 
+# Sampling pattern: center point + two concentric rings (1 + 6 + 8 = 15 tiles).
+# Each sample carries a weight so the clicked point and nearby area count more
+# than the far edge of the circle — otherwise a city gets diluted by its rural
+# surroundings and the exposure reads too low.
+CENTER_WEIGHT = 4.0
+VULN_RINGS = ((0.5, 6, 2.0), (0.95, 8, 1.0))  # (radius fraction, #points, weight each)
+
+
+def _tile_xy(lat: float, lon: float, zoom: int):
+    """Web-Mercator tile indices for a lat/lon at a given zoom."""
+    lat = max(-85.0, min(85.0, lat))
+    n = 2 ** zoom
+    x = int((lon + 180.0) / 360.0 * n)
+    lat_r = math.radians(lat)
+    y = int((1 - math.log(math.tan(lat_r) + 1 / math.cos(lat_r)) / math.pi) / 2 * n)
+    return max(0, min(n - 1, x)), max(0, min(n - 1, y))
+
+
+def _weighted_samples(lat: float, lon: float, radius_km: float):
+    """Center + ring points as (lat, lon, weight) covering the selected circle."""
+    samples = [(lat, lon, CENTER_WEIGHT)]
+    cos_lat = max(0.01, math.cos(math.radians(lat)))
+    for frac, count, weight in VULN_RINGS:
+        r_km = radius_km * frac
+        dlat = r_km / 111.0
+        for i in range(count):
+            ang = 2 * math.pi * i / count
+            plat = max(-85.0, min(85.0, lat + dlat * math.sin(ang)))
+            plon = ((lon + (r_km / (111.0 * cos_lat)) * math.cos(ang) + 180.0) % 360.0) - 180.0
+            samples.append((plat, plon, weight))
+    return samples
+
+
+def _fetch_tile(zoom: int, x: int, y: int):
+    url = (
+        f"https://server.arcgisonline.com/ArcGIS/rest/services/"
+        f"World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
+    )
+    r = requests.get(url, timeout=15)
+    r.raise_for_status()
+    return Image.open(io.BytesIO(r.content)), url
+
+
 @app.get("/vulnerability")
 def vulnerability(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
-    zoom: int = Query(13, ge=8, le=17),
+    # zoom 16 ⇒ tile footprint ~611 m, matching EuroSAT's ~640 m training scale.
+    zoom: int = Query(16, ge=8, le=18),
+    radius_km: float = Query(100, ge=10, le=500),
 ):
     clf = get_land_use_classifier()
     if clf is None:
         raise HTTPException(status_code=503, detail="CNN not loaded")
 
-    n = 2 ** zoom
-    x_tile = int((lon + 180) / 360 * n)
-    y_tile = int(
-        (1 - math.log(
-            math.tan(math.radians(lat)) + 1 / math.cos(math.radians(lat))
-        ) / math.pi) / 2 * n
-    )
+    # Map weighted sample points to tiles, accumulating weight per unique tile
+    # (tiles that coincide at small radii sum their weights).
+    tile_weights = {}
+    for plat, plon, w in _weighted_samples(lat, lon, radius_km):
+        key = _tile_xy(plat, plon, zoom)
+        tile_weights[key] = tile_weights.get(key, 0.0) + w
 
-    tile_url = (
-        f"https://server.arcgisonline.com/ArcGIS/rest/services/"
-        f"World_Imagery/MapServer/tile/{zoom}/{y_tile}/{x_tile}"
-    )
-    try:
-        r = requests.get(tile_url, timeout=15)
-        r.raise_for_status()
-        image = Image.open(io.BytesIO(r.content))
-        result = clf.classify_image(image)
-        result["tile_url"] = tile_url
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Tile fetch/classify failed: {e}")
+    def fetch(key):
+        x, y = key
+        try:
+            return key, _fetch_tile(zoom, x, y)
+        except Exception:
+            return key, None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        fetched = dict(ex.map(fetch, list(tile_weights.keys())))
+
+    # Classify each fetched tile (sequentially — inference is fast, avoids
+    # sharing one inference session across threads) and combine by weighted average.
+    scores, num, wsum, class_acc = [], 0.0, 0.0, None
+    for key, payload in fetched.items():
+        if payload is None:
+            continue
+        image, _url = payload
+        try:
+            r = clf.classify_image(image)
+        except Exception:
+            continue
+        w = tile_weights[key]
+        s = r["vulnerability_score"]
+        scores.append(s)
+        num += s * w
+        wsum += w
+        if class_acc is None:
+            class_acc = {c: 0.0 for c in r["all_classes"]}
+        for c, p in r["all_classes"].items():
+            class_acc[c] += p * w
+
+    if not scores:
+        raise HTTPException(status_code=502, detail="No tiles could be fetched/classified")
+
+    avg_score = num / wsum
+    avg_classes = {c: round(v / wsum, 3) for c, v in class_acc.items()}
+    dominant = max(avg_classes, key=avg_classes.get)
+
+    return {
+        "vulnerability_score": round(avg_score, 1),
+        "predicted_class": dominant,
+        "confidence": avg_classes[dominant],
+        "all_classes": avg_classes,
+        "n_samples": len(scores),
+        "n_tiles": len(tile_weights),
+        "radius_km": radius_km,
+        "score_min": round(min(scores), 1),
+        "score_max": round(max(scores), 1),
+    }
 
 
 if FRONTEND_DIR.exists():

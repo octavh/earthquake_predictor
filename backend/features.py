@@ -286,12 +286,12 @@ from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from PIL import Image
 
 VULNERABILITY_SCORES = {
-    "Residential": 95,
-    "Industrial": 85,
-    "Highway": 60,
-    "AnnualCrop": 25,
-    "PermanentCrop": 25,
-    "Pasture": 15,
+    "Residential": 100,
+    "Industrial": 100,
+    "Highway": 80,
+    "AnnualCrop": 20,
+    "PermanentCrop": 20,
+    "Pasture": 10,
     "HerbaceousVegetation": 10,
     "Forest": 10,
     "River": 5,
